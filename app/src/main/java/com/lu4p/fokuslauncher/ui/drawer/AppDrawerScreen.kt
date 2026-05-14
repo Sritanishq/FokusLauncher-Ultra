@@ -789,6 +789,15 @@ fun AppDrawerContent(
 
     LaunchedEffect(uiState.selectedCategory) { listState.scrollToItem(0) }
 
+    var previousSearchQuery by remember { mutableStateOf("") }
+    LaunchedEffect(uiState.searchQuery) {
+        val prev = previousSearchQuery
+        if (prev.isBlank() && uiState.searchQuery.isNotBlank()) {
+            listState.scrollToItem(0, 0)
+        }
+        previousSearchQuery = uiState.searchQuery
+    }
+
     LaunchedEffect(useSidebarCategoryDrawer) {
         if (!useSidebarCategoryDrawer) showSearch = false
     }
@@ -857,9 +866,13 @@ fun AppDrawerContent(
         } else if (!isAtTop) {
             // Track that we've left the top once
             hasScrolledDown = true
-            keyboardController?.hide()
-            focusManager.clearFocus(force = true)
-            if (useSidebarCategoryDrawer) showSearch = false
+            // Typing can briefly report !isAtTop (IME insets, list relayout when filtered content
+            // appears). Do not tear down search/IME while the user has an active query.
+            if (uiState.searchQuery.isBlank()) {
+                keyboardController?.hide()
+                focusManager.clearFocus(force = true)
+                if (useSidebarCategoryDrawer) showSearch = false
+            }
         }
     }
 
