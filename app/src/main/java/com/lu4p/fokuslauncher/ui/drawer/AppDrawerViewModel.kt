@@ -166,6 +166,7 @@ private class ProfileSectionsBuildCache {
     private var sortMode: DrawerAppSortMode? = null
     private var counts: Map<String, Int>? = null
     private var customOrder: Map<String, List<String>>? = null
+    private var profileDisplayNameOverrides: Map<String, String>? = null
     private var sections: List<DrawerProfileSectionUi>? = null
 
     fun get(
@@ -173,13 +174,15 @@ private class ProfileSectionsBuildCache {
             mode: DrawerAppSortMode,
             countsMap: Map<String, Int>,
             expectedCustom: Map<String, List<String>>?,
+            overrides: Map<String, String>,
     ): List<DrawerProfileSectionUi>? =
             synchronized(lock) {
                 if (sections != null &&
                                 this.apps === apps &&
                                 sortMode == mode &&
                                 countsMap === counts &&
-                                customOrder == expectedCustom
+                                customOrder == expectedCustom &&
+                                profileDisplayNameOverrides == overrides
                 ) {
                     sections
                 } else {
@@ -192,6 +195,7 @@ private class ProfileSectionsBuildCache {
             mode: DrawerAppSortMode,
             countsMap: Map<String, Int>,
             custom: Map<String, List<String>>?,
+            overrides: Map<String, String>,
             built: List<DrawerProfileSectionUi>,
     ) {
         synchronized(lock) {
@@ -199,6 +203,7 @@ private class ProfileSectionsBuildCache {
             sortMode = mode
             counts = countsMap
             customOrder = custom
+            profileDisplayNameOverrides = overrides
             sections = built
         }
     }
@@ -244,6 +249,7 @@ constructor(
     /** Profile key → ordered drawer open-count keys ([drawerOpenCountKey]); used when sort is CUSTOM. */
     private var latestCustomOrderByProfile: Map<String, List<String>> = emptyMap()
     private var latestUseSidebarCategoryDrawer: Boolean = false
+    private var latestProfileDisplayNameOverrides: Map<String, String> = emptyMap()
 
     private val profileSectionsBuildCache = ProfileSectionsBuildCache()
     private val privateAppsSortCache = PrivateAppsSortCache()
@@ -288,6 +294,7 @@ constructor(
         observeDrawerSortOpenCountsAndCustomOrder()
         observeDrawerDotSearchPreferences()
         observeDrawerScrollToTopAutoKeyboard()
+        observeProfileDisplayNameOverrides()
         observeLauncherAppearance()
         observeDrawerSearchAutoLaunch()
         refreshPrivateSpaceState()
@@ -327,6 +334,40 @@ constructor(
         viewModelScope.launch {
             preferencesManager.drawerScrollToTopAutoKeyboardFlow.collect { enabled ->
                 _uiState.update { it.copy(drawerScrollToTopAutoKeyboard = enabled) }
+            }
+        }
+    }
+
+    private fun observeProfileDisplayNameOverrides() {
+        viewModelScope.launch {
+            preferencesManager.profileDisplayNameOverridesFlow.collect { overrides ->
+                latestProfileDisplayNameOverrides = overrides
+                val state = _uiState.value
+                val removedSnapshot =
+                        synchronized(optimisticallyRemovedKeys) { optimisticallyRemovedKeys.toSet() }
+                val metadata =
+                        DrawerMetadataSnapshot(
+                                latestHiddenSet,
+                                latestRenameMap,
+                                latestCategoryMap,
+                                latestDefinedCategories,
+                        )
+                val reorderedPrivate =
+                        resolvedPrivateSpaceAppsForDrawer(metadata, removedSnapshot, state)
+                val filteredContent =
+                        buildFilteredDrawerContent(
+                                allApps = state.allApps,
+                                privateApps = reorderedPrivate,
+                                rawSearchQuery = state.searchQuery,
+                                category = state.selectedCategory,
+                        )
+                _uiState.update { s ->
+                    s.withFilteredContent(filteredContent).copy(
+                            privateSpaceApps = reorderedPrivate,
+                            isPrivateSpaceUnlocked = privateSpaceUnlockedForDrawer(s),
+                    )
+                }
+                scheduleDrawerCachePrewarm()
             }
         }
     }
@@ -1338,14 +1379,25 @@ constructor(
         val counts = latestOpenCounts
         val expectedCustom =
                 if (sortMode == DrawerAppSortMode.CUSTOM) latestCustomOrderByProfile else null
-        profileSectionsBuildCache.get(apps, sortMode, counts, expectedCustom)?.let { return it }
+        profileSectionsBuildCache.get(apps, sortMode, counts, expectedCustom, latestProfileDisplayNameOverrides)
+                ?.let { return it }
         val built =
                 withContext(drawerComputationDispatcher) {
-                    groupAppsIntoProfileSections(context, apps) { list ->
-                        sortDrawerAppsWith(list, sortMode, counts)
-                    }
+                    groupAppsIntoProfileSections(
+                            context,
+                            apps,
+                            { list -> sortDrawerAppsWith(list, sortMode, counts) },
+                            latestProfileDisplayNameOverrides,
+                    )
                 }
-        profileSectionsBuildCache.put(apps, sortMode, counts, expectedCustom, built)
+        profileSectionsBuildCache.put(
+                apps,
+                sortMode,
+                counts,
+                expectedCustom,
+                latestProfileDisplayNameOverrides,
+                built,
+        )
         return built
     }
 

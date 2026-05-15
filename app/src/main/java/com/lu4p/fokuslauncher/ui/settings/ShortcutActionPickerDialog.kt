@@ -39,6 +39,7 @@ fun ShortcutActionPickerDialog(
         onDismiss: () -> Unit,
         containerColor: Color = MaterialTheme.colorScheme.surfaceVariant,
         includeWidgetPageTarget: Boolean = false,
+        profileDisplayNameOverrides: Map<String, String> = emptyMap(),
 ) {
     SearchablePickerDialog(
             title = title,
@@ -52,8 +53,13 @@ fun ShortcutActionPickerDialog(
                     else allActions.filter { it.displayLabel.containsNormalizedSearch(filter) }
                 }
         val sections =
-                remember(filtered, allApps, context) {
-                    groupShortcutActionsIntoProfileSections(context, filtered, allApps)
+                remember(filtered, allApps, context, profileDisplayNameOverrides) {
+                    groupShortcutActionsIntoProfileSections(
+                            context,
+                            filtered,
+                            allApps,
+                            profileDisplayNameOverrides,
+                    )
                 }
 
         OutlinedTextField(

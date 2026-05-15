@@ -24,7 +24,8 @@ data class DrawerDotSearchSettingsUiState(
         val allApps: List<AppInfo> = emptyList(),
         val allShortcutActions: List<AppShortcutAction> = emptyList(),
         /** Apps that resolve [android.content.Intent.ACTION_WEB_SEARCH] or [android.content.Intent.ACTION_SEARCH] for their package. */
-        val webSearchCapableApps: List<AppInfo> = emptyList()
+        val webSearchCapableApps: List<AppInfo> = emptyList(),
+        val profileDisplayNameOverrides: Map<String, String> = emptyMap(),
 )
 
 @HiltViewModel
@@ -43,22 +44,22 @@ constructor(
             combine(
                             preferencesManager.drawerDotSearchDefaultFlow,
                             preferencesManager.drawerDotSearchAliasesFlow,
+                            preferencesManager.profileDisplayNameOverridesFlow,
                             appRepository.getInstalledAppsVersion()
-                    ) { defaultTarget, aliases, _ ->
-                        Triple(defaultTarget, aliases, appRepository.getInstalledApps())
+                    ) { defaultTarget, aliases, profileNames, _ ->
+                        val apps = appRepository.getInstalledApps()
+                        DrawerDotSearchSettingsUiState(
+                                defaultTarget = defaultTarget,
+                                aliases = aliases,
+                                allApps = apps,
+                                allShortcutActions =
+                                        appRepository.getAllShortcutActionsOnBackground(),
+                                webSearchCapableApps =
+                                        appRepository.filterAppsForDotSearchAppPicker(apps),
+                                profileDisplayNameOverrides = profileNames,
+                        )
                     }
-                    .collect { (defaultTarget, aliases, apps) ->
-                        _uiState.value =
-                                DrawerDotSearchSettingsUiState(
-                                        defaultTarget = defaultTarget,
-                                        aliases = aliases,
-                                        allApps = apps,
-                                        allShortcutActions =
-                                                appRepository.getAllShortcutActionsOnBackground(),
-                                        webSearchCapableApps =
-                                                appRepository.filterAppsForDotSearchAppPicker(apps)
-                                )
-                    }
+                    .collect { _uiState.value = it }
         }
     }
 

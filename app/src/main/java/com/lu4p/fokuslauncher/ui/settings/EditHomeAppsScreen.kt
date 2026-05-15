@@ -56,6 +56,7 @@ fun EditHomeAppsScreen(
 ) {
     val editFavorites by viewModel.editFavorites.collectAsStateWithLifecycle()
     val allApps by viewModel.allInstalledApps.collectAsStateWithLifecycle()
+    val profileDisplayNameOverrides by viewModel.profileDisplayNameOverrides.collectAsStateWithLifecycle()
     val saveAndBack: () -> Unit = {
         viewModel.saveEditedFavorites()
         onNavigateBack()
@@ -84,11 +85,12 @@ fun EditHomeAppsScreen(
                 }
         val context = LocalContext.current
         val uncheckedSections =
-                remember(uncheckedApps, context) {
+                remember(uncheckedApps, context, profileDisplayNameOverrides) {
                     groupAppsIntoProfileSections(
                             context,
                             uncheckedApps,
-                            ::sortAppsAlphabeticallyByProfileSection
+                            ::sortAppsAlphabeticallyByProfileSection,
+                            profileDisplayNameOverrides,
                     )
                 }
 
@@ -97,6 +99,7 @@ fun EditHomeAppsScreen(
                 editFavorites = editFavorites,
                 uncheckedSections = uncheckedSections,
                 allApps = allApps,
+                profileDisplayNameOverrides = profileDisplayNameOverrides,
                 onToggle = { viewModel.toggleAppOnHomeScreen(it) },
                 onReorder = { from, to -> viewModel.reorderFavorite(from, to) }
         )
@@ -109,6 +112,7 @@ private fun ReorderableEditHomeAppsList(
         editFavorites: List<FavoriteApp>,
         uncheckedSections: List<DrawerProfileSectionUi>,
         allApps: List<AppInfo>,
+        profileDisplayNameOverrides: Map<String, String>,
         onToggle: (AppInfo) -> Unit,
         onReorder: (Int, Int) -> Unit
 ) {
@@ -136,8 +140,13 @@ private fun ReorderableEditHomeAppsList(
                         }
                     }
             val profileBadge =
-                    remember(fav, matchingApp, context) {
-                        profileOriginLabelForFavorite(context, fav, matchingApp)
+                    remember(fav, matchingApp, profileDisplayNameOverrides, context) {
+                        profileOriginLabelForFavorite(
+                                context,
+                                fav,
+                                matchingApp,
+                                profileDisplayNameOverrides,
+                        )
                     }
             Row(
                     modifier =
@@ -187,8 +196,8 @@ private fun ReorderableEditHomeAppsList(
                 horizontalPadding = 16.dp,
         ) { app ->
             val profileBadge =
-                    remember(app.packageName, app.componentName, app.userHandle, context) {
-                        profileOriginLabelForApp(context, app)
+                    remember(app.packageName, app.componentName, app.userHandle, profileDisplayNameOverrides, context) {
+                        profileOriginLabelForApp(context, app, profileDisplayNameOverrides)
                     }
             Row(
                     modifier =

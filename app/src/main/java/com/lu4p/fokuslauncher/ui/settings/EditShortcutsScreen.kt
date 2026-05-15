@@ -62,6 +62,7 @@ fun EditShortcutsScreen(
     val editShortcuts by viewModel.editRightShortcuts.collectAsStateWithLifecycle()
     val allActions by viewModel.allShortcutActions.collectAsStateWithLifecycle()
     val allApps by viewModel.allInstalledApps.collectAsStateWithLifecycle()
+    val profileDisplayNameOverrides by viewModel.profileDisplayNameOverrides.collectAsStateWithLifecycle()
     val iconPickerForIndex = remember { mutableStateOf<Int?>(null) }
 
     val saveAndBack: () -> Unit = {
@@ -89,8 +90,13 @@ fun EditShortcutsScreen(
                             }
                 }
         val uncheckedShortcutSections =
-                remember(uncheckedActions, allApps, context) {
-                    groupShortcutActionsIntoProfileSections(context, uncheckedActions, allApps)
+                remember(uncheckedActions, allApps, context, profileDisplayNameOverrides) {
+                    groupShortcutActionsIntoProfileSections(
+                            context,
+                            uncheckedActions,
+                            allApps,
+                            profileDisplayNameOverrides,
+                    )
                 }
 
         ReorderableShortcutList(
@@ -98,6 +104,7 @@ fun EditShortcutsScreen(
                 editShortcuts = editShortcuts,
                 allApps = allApps,
                 uncheckedShortcutSections = uncheckedShortcutSections,
+                profileDisplayNameOverrides = profileDisplayNameOverrides,
                 onToggleChecked = { shortcut ->
                     viewModel.toggleRightShortcut(
                             AppShortcutAction(
@@ -145,6 +152,7 @@ private fun ReorderableShortcutList(
         editShortcuts: List<HomeShortcut>,
         allApps: List<AppInfo>,
         uncheckedShortcutSections: List<DrawerProfileShortcutSectionUi>,
+        profileDisplayNameOverrides: Map<String, String>,
         onToggleChecked: (HomeShortcut) -> Unit,
         onToggleUnchecked: (AppShortcutAction) -> Unit,
         onReorder: (Int, Int) -> Unit,
@@ -169,8 +177,13 @@ private fun ReorderableShortcutList(
         ) { index ->
             val shortcut = editShortcuts[index]
             val profileBadge =
-                    remember(shortcut, allApps, context) {
-                        profileOriginLabelForHomeShortcut(context, shortcut, allApps)
+                    remember(shortcut, allApps, profileDisplayNameOverrides, context) {
+                        profileOriginLabelForHomeShortcut(
+                                context,
+                                shortcut,
+                                allApps,
+                                profileDisplayNameOverrides,
+                        )
                     }
             Row(
                     modifier =

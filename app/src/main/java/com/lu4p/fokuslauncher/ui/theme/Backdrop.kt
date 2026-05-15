@@ -1,6 +1,7 @@
 package com.lu4p.fokuslauncher.ui.theme
 
 import androidx.compose.ui.graphics.Color
+import com.lu4p.fokuslauncher.data.model.PhotoWallpaperDrawerOverlayIntensity
 
 object FokusBackdrop {
     // Single source of truth for overlay intensity in each mode.
@@ -24,12 +25,24 @@ object FokusBackdrop {
     fun scrimColor(blurEnabled: Boolean): Color =
         if (blurEnabled) ScrimColorWithBlur else ScrimColorWithoutBlur
 
-    fun drawerOverlayScrimColor(blurEnabled: Boolean): Color =
-            Color.Black.copy(
-                    alpha =
-                            if (blurEnabled) DRAWER_OVERLAY_STRENGTH_WITH_BLUR
-                            else DRAWER_OVERLAY_STRENGTH_WITHOUT_BLUR
-            )
+    /**
+     * @param intensityMultiplier User preference, 1x = default; only values above 1 add dimming.
+     *     Clamped using [PhotoWallpaperDrawerOverlayIntensity] bounds so alpha stays in range.
+     */
+    fun drawerOverlayScrimColor(
+            blurEnabled: Boolean,
+            intensityMultiplier: Float = 1f,
+    ): Color {
+        val base =
+                if (blurEnabled) DRAWER_OVERLAY_STRENGTH_WITH_BLUR
+                else DRAWER_OVERLAY_STRENGTH_WITHOUT_BLUR
+        val m =
+                intensityMultiplier.coerceIn(
+                        PhotoWallpaperDrawerOverlayIntensity.MIN,
+                        PhotoWallpaperDrawerOverlayIntensity.MAX,
+                )
+        return Color.Black.copy(alpha = (base * m).coerceIn(0.04f, 0.97f))
+    }
 
     fun windowDimAmount(blurEnabled: Boolean): Float =
         if (blurEnabled) WINDOW_DIM_AMOUNT_WITH_BLUR else WINDOW_DIM_AMOUNT_WITHOUT_BLUR

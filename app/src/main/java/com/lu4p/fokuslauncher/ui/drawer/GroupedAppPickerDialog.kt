@@ -37,6 +37,7 @@ fun GroupedAppPickerDialog(
         searchLabel: (@Composable () -> Unit)? = { Text(stringResource(R.string.search)) },
         emptyStateText: String? = null,
         useSystemSoundOnItemClick: Boolean = true,
+        profileDisplayNameOverrides: Map<String, String> = emptyMap(),
 ) {
     SearchablePickerDialog(title = title, onDismiss = onDismiss) { filter, onFilterChange ->
         val context = LocalContext.current
@@ -46,11 +47,12 @@ fun GroupedAppPickerDialog(
                     else apps.filter { it.label.containsNormalizedSearch(filter) }
                 }
         val filteredSections =
-                remember(filtered, context) {
+                remember(filtered, context, profileDisplayNameOverrides) {
                     groupAppsIntoProfileSections(
                             context,
                             filtered,
-                            ::sortAppsAlphabeticallyByProfileSection
+                            ::sortAppsAlphabeticallyByProfileSection,
+                            profileDisplayNameOverrides,
                     )
                 }
 

@@ -74,6 +74,7 @@ fun CategorySettingsScreen(
         viewModel: SettingsViewModel = hiltViewModel(),
         onNavigateBack: () -> Unit,
         onEditCategoryApps: (String) -> Unit,
+        onOpenProfileNamesSettings: () -> Unit = {},
         backgroundScrim: Color = FokusBackdrop.ScrimColorWithoutBlur
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -149,22 +150,42 @@ fun CategorySettingsScreen(
                 }
             }
 
-            ReorderableCategoryList(
-                    categories = localCategories,
-                    counts = appCounts,
-                    showDrawerCategoryIcons = uiState.drawerSidebarCategories,
-                    categoryDrawerIconOverrides = uiState.categoryDrawerIconOverrides,
-                    onOpenCategoryIconPicker = { categoryIconPickerFor = it },
-                    onReorder = { from, to ->
-                        val reordered = localCategories.toMutableList()
-                        val item = reordered.removeAt(from)
-                        reordered.add(to, item)
-                        localCategories = reordered
-                    },
-                    onReorderFinished = { viewModel.reorderCategories(it) },
-                    onEditCategoryApps = onEditCategoryApps,
-                    onDelete = { viewModel.deleteCategory(it) }
-            )
+            Column(
+                    modifier =
+                            Modifier.fillMaxWidth()
+                                    .clickableWithSystemSound { onOpenProfileNamesSettings() }
+                                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Text(
+                        text = stringResource(R.string.settings_profile_names_title),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onBackground,
+                )
+                Text(
+                        text = stringResource(R.string.settings_profile_names_subtitle),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                ReorderableCategoryList(
+                        categories = localCategories,
+                        counts = appCounts,
+                        showDrawerCategoryIcons = uiState.drawerSidebarCategories,
+                        categoryDrawerIconOverrides = uiState.categoryDrawerIconOverrides,
+                        onOpenCategoryIconPicker = { categoryIconPickerFor = it },
+                        onReorder = { from, to ->
+                            val reordered = localCategories.toMutableList()
+                            val item = reordered.removeAt(from)
+                            reordered.add(to, item)
+                            localCategories = reordered
+                        },
+                        onReorderFinished = { viewModel.reorderCategories(it) },
+                        onEditCategoryApps = onEditCategoryApps,
+                        onDelete = { viewModel.deleteCategory(it) }
+                )
+            }
         }
     }
 
@@ -354,11 +375,12 @@ fun CategoryAppsScreen(
             val checkedApps = remember(uiState.allApps, checkedPackages) {
                 uiState.allApps.filter { it.packageName in checkedPackages }
             }
-            val checkedSections = remember(checkedApps, context) {
+            val checkedSections = remember(checkedApps, uiState.profileDisplayNameOverrides, context) {
                 groupAppsIntoProfileSections(
                         context,
                         checkedApps,
-                        ::sortAppsAlphabeticallyByProfileSection
+                        ::sortAppsAlphabeticallyByProfileSection,
+                        uiState.profileDisplayNameOverrides,
                 )
             }
             val uncheckedApps = remember(uiState.allApps, checkedPackages, searchQuery) {
@@ -368,13 +390,15 @@ fun CategoryAppsScreen(
                             else apps.filter { it.label.containsNormalizedSearch(searchQuery) }
                         }
             }
-            val uncheckedSections = remember(uncheckedApps, context) {
-                groupAppsIntoProfileSections(
-                        context,
-                        uncheckedApps,
-                        ::sortAppsAlphabeticallyByProfileSection
-                )
-            }
+            val uncheckedSections =
+                    remember(uncheckedApps, uiState.profileDisplayNameOverrides, context) {
+                        groupAppsIntoProfileSections(
+                                context,
+                                uncheckedApps,
+                                ::sortAppsAlphabeticallyByProfileSection,
+                                uiState.profileDisplayNameOverrides,
+                        )
+                    }
 
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 if (checkedApps.isNotEmpty()) {

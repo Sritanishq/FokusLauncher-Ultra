@@ -73,6 +73,7 @@ import com.lu4p.fokuslauncher.ui.settings.EditShortcutsScreen
 import com.lu4p.fokuslauncher.ui.settings.DeviceControlSettingsScreen
 import com.lu4p.fokuslauncher.ui.settings.DrawerDotSearchSettingsScreen
 import com.lu4p.fokuslauncher.ui.settings.HomeWidgetsSettingsScreen
+import com.lu4p.fokuslauncher.ui.settings.ProfileNamesSettingsScreen
 import com.lu4p.fokuslauncher.ui.settings.SettingsScreen
 import com.lu4p.fokuslauncher.ui.settings.SettingsViewModel
 import com.lu4p.fokuslauncher.ui.theme.FokusBackdrop
@@ -92,6 +93,7 @@ object Routes {
     const val SETTINGS_EDIT_SHORTCUTS = "settings_edit_shortcuts"
     const val SETTINGS_HOME_WIDGETS = "settings_home_widgets"
     const val SETTINGS_DRAWER_DOT_SEARCH = "settings_drawer_dot_search"
+    const val SETTINGS_PROFILE_NAMES = "settings_profile_names"
 }
 
 private const val SWIPE_THRESHOLD = 200f
@@ -191,7 +193,18 @@ fun FokusNavGraph(
             }
         }
     }
-    val overlayScrimColor = FokusBackdrop.drawerOverlayScrimColor(crossWindowBlurEnabled)
+    val photoDrawerOverlay by
+            navGraphViewModel.photoWallpaperDrawerOverlayUiState.collectAsStateWithLifecycle()
+    val overlayScrimIntensity =
+            if (photoDrawerOverlay.usesPhotoWallpaper) photoDrawerOverlay.intensityMultiplier
+            else 1f
+    val overlayScrimColor =
+            remember(crossWindowBlurEnabled, overlayScrimIntensity) {
+                FokusBackdrop.drawerOverlayScrimColor(
+                        blurEnabled = crossWindowBlurEnabled,
+                        intensityMultiplier = overlayScrimIntensity,
+                )
+            }
 
     LaunchedEffect(shouldApplyWindowEffects, crossWindowBlurEnabled, activity) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -636,6 +649,14 @@ fun FokusNavGraph(
                 )
             }
 
+            fokusSettingsComposable(Routes.SETTINGS_PROFILE_NAMES) {
+                ProfileNamesSettingsScreen(
+                        viewModel = settingsViewModel(componentActivity),
+                        onNavigateBack = { navController.popBackStack() },
+                        backgroundScrim = Color.Black
+                )
+            }
+
             fokusSettingsComposable(Routes.SETTINGS_DEVICE_CONTROL) {
                 DeviceControlSettingsScreen(
                         viewModel = settingsViewModel(componentActivity),
@@ -652,6 +673,9 @@ fun FokusNavGraph(
                             navController.navigateSingleTop(
                                     "${Routes.SETTINGS_CATEGORY_APPS}/${Uri.encode(category)}"
                             )
+                        },
+                        onOpenProfileNamesSettings = {
+                            navController.navigateSingleTop(Routes.SETTINGS_PROFILE_NAMES)
                         },
                         backgroundScrim = Color.Black
                 )

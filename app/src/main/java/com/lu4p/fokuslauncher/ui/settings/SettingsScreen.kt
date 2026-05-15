@@ -246,7 +246,6 @@ fun SettingsScreen(
         onOpenDeviceControlSettings: () -> Unit = {},
         onEditCategories: () -> Unit = {},
         onDrawerDotSearchSettings: () -> Unit = {},
-        onOpenProfileNamesSettings: () -> Unit = {},
         onOpenHomeWidgetsSettings: () -> Unit = {},
         backgroundScrim: Color = FokusBackdrop.ScrimColorWithoutBlur
 ) {
@@ -297,7 +296,6 @@ fun SettingsScreen(
                 onEditRightShortcuts = onEditRightShortcuts,
                 onEditCategories = onEditCategories,
                 onDrawerDotSearchSettings = onDrawerDotSearchSettings,
-                onOpenProfileNamesSettings = onOpenProfileNamesSettings,
                 onShowAppPicker = { showAppPickerFor.value = it },
                 onShowResetConfirm = { showResetConfirm.value = true },
         )
@@ -337,7 +335,6 @@ private fun SettingsScreenContent(
         onEditRightShortcuts: () -> Unit,
         onEditCategories: () -> Unit,
         onDrawerDotSearchSettings: () -> Unit,
-        onOpenProfileNamesSettings: () -> Unit,
         onShowAppPicker: (String) -> Unit,
         onShowResetConfirm: () -> Unit,
 ) {
@@ -391,11 +388,6 @@ private fun SettingsScreenContent(
                             R.string.settings_dot_search_title,
                             stringResource(R.string.settings_dot_search_subtitle),
                             onDrawerDotSearchSettings,
-                    ),
-                    SubpageNavRow(
-                            R.string.settings_profile_names_title,
-                            stringResource(R.string.settings_profile_names_subtitle),
-                            onOpenProfileNamesSettings,
                     ),
             )
     LazyColumn(modifier = Modifier.fillMaxSize()) {

@@ -24,6 +24,19 @@ fun sortAppsAlphabeticallyByProfileSection(apps: List<AppInfo>): List<AppInfo> =
         apps.sortedWith(alphabeticalAppComparatorForProfiles)
 
 /**
+ * Applies a user-defined profile title from [profileDisplayNameOverrides] when set; otherwise
+ * returns [defaultTitle].
+ */
+fun resolvedProfileDisplayTitle(
+        profileDisplayNameOverrides: Map<String, String>,
+        profileKey: String,
+        defaultTitle: String,
+): String {
+    val custom = profileDisplayNameOverrides[profileKey]?.trim()
+    return if (!custom.isNullOrEmpty()) custom else defaultTitle
+}
+
+/**
  * Groups [apps] into the same profile sections as the app drawer (personal, work, clone, …),
  * applying [sortWithinSection] inside each section (drawer uses this for alphabetical vs
  * most-opened).
@@ -32,6 +45,7 @@ fun groupAppsIntoProfileSections(
         context: Context,
         apps: List<AppInfo>,
         sortWithinSection: (List<AppInfo>) -> List<AppInfo>,
+        profileDisplayNameOverrides: Map<String, String> = emptyMap(),
 ): List<DrawerProfileSectionUi> {
     val userManager =
             try {
@@ -40,7 +54,12 @@ fun groupAppsIntoProfileSections(
                 null
             }
     if (userManager == null) {
-        return buildProfileSectionsWithoutUserManager(context, apps, sortWithinSection)
+        return buildProfileSectionsWithoutUserManager(
+                context,
+                apps,
+                sortWithinSection,
+                profileDisplayNameOverrides,
+        )
     }
 
     val ownerApps = sortWithinSection(apps.filter { it.userHandle == null })
@@ -59,7 +78,12 @@ fun groupAppsIntoProfileSections(
             add(
                     DrawerProfileSectionUi(
                             id = "owner",
-                            title = context.getString(R.string.drawer_section_personal),
+                            title =
+                                    resolvedProfileDisplayTitle(
+                                            profileDisplayNameOverrides,
+                                            "0",
+                                            context.getString(R.string.drawer_section_personal),
+                                    ),
                             apps = ownerApps,
                     )
             )
@@ -75,6 +99,7 @@ fun groupAppsIntoProfileSections(
                                             user = user,
                                             userManager = userManager,
                                             totalSecondaryProfiles = orderedUsers.size,
+                                            profileDisplayNameOverrides = profileDisplayNameOverrides,
                                     ),
                             apps = list,
                     )
@@ -87,6 +112,7 @@ private fun buildProfileSectionsWithoutUserManager(
         context: Context,
         apps: List<AppInfo>,
         sortWithinSection: (List<AppInfo>) -> List<AppInfo>,
+        profileDisplayNameOverrides: Map<String, String>,
 ): List<DrawerProfileSectionUi> {
     val ownerApps = sortWithinSection(apps.filter { it.userHandle == null })
     val byUser = apps.filter { it.userHandle != null }.groupBy { it.userHandle!! }
@@ -95,14 +121,19 @@ private fun buildProfileSectionsWithoutUserManager(
             add(
                     DrawerProfileSectionUi(
                             id = "owner",
-                            title = context.getString(R.string.drawer_section_personal),
+                            title =
+                                    resolvedProfileDisplayTitle(
+                                            profileDisplayNameOverrides,
+                                            "0",
+                                            context.getString(R.string.drawer_section_personal),
+                                    ),
                             apps = ownerApps,
                     )
             )
         }
         for (user in byUser.keys) {
             val list = sortWithinSection(byUser.getValue(user))
-            val title =
+            val defaultTitle =
                     when {
                         byUser.keys.size == 1 &&
                                 !ProfileHeuristics.isLikelyCloneOrParallelProfile(context, user) ->
@@ -111,10 +142,11 @@ private fun buildProfileSectionsWithoutUserManager(
                                 context.getString(R.string.drawer_section_clone_profile)
                         else -> context.getString(R.string.drawer_section_other_profile)
                     }
+            val pk = appProfileKey(user)
             add(
                     DrawerProfileSectionUi(
                             id = "u_${user.hashCode()}",
-                            title = title,
+                            title = resolvedProfileDisplayTitle(profileDisplayNameOverrides, pk, defaultTitle),
                             apps = list,
                     )
             )
@@ -123,10 +155,16 @@ private fun buildProfileSectionsWithoutUserManager(
 }
 
 /** Profile subtitle for an [AppInfo] row (null = personal / owner). Drawer-style naming. */
-fun profileOriginLabelForApp(context: Context, app: AppInfo): String? {
+fun profileOriginLabelForApp(
+        context: Context,
+        app: AppInfo,
+        profileDisplayNameOverrides: Map<String, String> = emptyMap(),
+): String? {
     val user = app.userHandle ?: return null
+    val pk = appProfileKey(user)
     if (PrivateSpaceManager(context).isPrivateSpaceProfile(user)) {
-        return context.getString(R.string.drawer_section_private_space)
+        val def = context.getString(R.string.drawer_section_private_space)
+        return resolvedProfileDisplayTitle(profileDisplayNameOverrides, pk, def)
     }
     val userManager =
             try {
@@ -142,13 +180,16 @@ fun profileOriginLabelForApp(context: Context, app: AppInfo): String? {
                 user,
                 userManager,
                 totalSecondary.coerceAtLeast(1),
+                profileDisplayNameOverrides,
         )
     }
-    return when {
-        ProfileHeuristics.isLikelyCloneOrParallelProfile(context, user) ->
-                context.getString(R.string.drawer_section_clone_profile)
-        else -> context.getString(R.string.drawer_section_work_profile)
-    }
+    val defaultTitle =
+            when {
+                ProfileHeuristics.isLikelyCloneOrParallelProfile(context, user) ->
+                        context.getString(R.string.drawer_section_clone_profile)
+                else -> context.getString(R.string.drawer_section_work_profile)
+            }
+    return resolvedProfileDisplayTitle(profileDisplayNameOverrides, pk, defaultTitle)
 }
 
 /**
@@ -156,10 +197,18 @@ fun profileOriginLabelForApp(context: Context, app: AppInfo): String? {
  * Uses the same naming rules as the app drawer when [matchingApp] supplies a [UserHandle].
  */
 /** Profile subtitle for a saved right-side shortcut (null = personal / owner). */
-fun profileOriginLabelForHomeShortcut(context: Context, shortcut: HomeShortcut, allApps: List<AppInfo>): String? {
+fun profileOriginLabelForHomeShortcut(
+        context: Context,
+        shortcut: HomeShortcut,
+        allApps: List<AppInfo>,
+        profileDisplayNameOverrides: Map<String, String> = emptyMap(),
+): String? {
     if (shortcut.profileKey == "0") return null
-    matchingAppInfoForHomeShortcut(shortcut, allApps)?.let { return profileOriginLabelForApp(context, it) }
-    return context.getString(R.string.drawer_section_work_profile)
+    matchingAppInfoForHomeShortcut(shortcut, allApps)?.let {
+        return profileOriginLabelForApp(context, it, profileDisplayNameOverrides)
+    }
+    val fallback = context.getString(R.string.drawer_section_work_profile)
+    return resolvedProfileDisplayTitle(profileDisplayNameOverrides, shortcut.profileKey, fallback)
 }
 
 private fun matchingAppInfoForHomeShortcut(shortcut: HomeShortcut, allApps: List<AppInfo>): AppInfo? {
@@ -178,6 +227,7 @@ fun profileOriginLabelForFavorite(
         context: Context,
         fav: FavoriteApp,
         matchingApp: AppInfo?,
+        profileDisplayNameOverrides: Map<String, String> = emptyMap(),
 ): String? {
     if (fav.profileKey == "0") return null
     val app =
@@ -185,8 +235,12 @@ fun profileOriginLabelForFavorite(
                 it.packageName == fav.packageName &&
                         appProfileKey(it.userHandle) == fav.profileKey
             }
-    return app?.let { profileOriginLabelForApp(context, it) }
-            ?: context.getString(R.string.drawer_section_work_profile)
+    return app?.let { profileOriginLabelForApp(context, it, profileDisplayNameOverrides) }
+            ?: resolvedProfileDisplayTitle(
+                    profileDisplayNameOverrides,
+                    fav.profileKey,
+                    context.getString(R.string.drawer_section_work_profile),
+            )
 }
 
 /**
@@ -245,24 +299,33 @@ internal fun profileSectionTitleForUser(
         user: UserHandle,
         userManager: UserManager,
         totalSecondaryProfiles: Int,
+        profileDisplayNameOverrides: Map<String, String> = emptyMap(),
 ): String {
-    if (isWorkProfileSectionUser(context, user, userManager, totalSecondaryProfiles)) {
-        return context.getString(R.string.drawer_section_work_profile)
-    }
-    if (ProfileHeuristics.isLikelyCloneOrParallelProfile(context, user)) {
-        return context.getString(R.string.drawer_section_clone_profile)
-    }
-    val serial =
-            try {
-                userManager.getSerialNumberForUser(user)
-            } catch (_: Exception) {
-                -1L
+    val defaultTitle =
+            when {
+                isWorkProfileSectionUser(context, user, userManager, totalSecondaryProfiles) ->
+                        context.getString(R.string.drawer_section_work_profile)
+                ProfileHeuristics.isLikelyCloneOrParallelProfile(context, user) ->
+                        context.getString(R.string.drawer_section_clone_profile)
+                else -> {
+                    val serial =
+                            try {
+                                userManager.getSerialNumberForUser(user)
+                            } catch (_: Exception) {
+                                -1L
+                            }
+                    if (serial >= 0L) {
+                        context.getString(R.string.drawer_section_profile_numbered, serial)
+                    } else {
+                        context.getString(R.string.drawer_section_other_profile)
+                    }
+                }
             }
-    return if (serial >= 0L) {
-        context.getString(R.string.drawer_section_profile_numbered, serial)
-    } else {
-        context.getString(R.string.drawer_section_other_profile)
-    }
+    return resolvedProfileDisplayTitle(
+            profileDisplayNameOverrides,
+            appProfileKey(user),
+            defaultTitle,
+    )
 }
 
 private val alphabeticalShortcutComparator =
@@ -280,6 +343,7 @@ fun groupShortcutActionsIntoProfileSections(
         context: Context,
         actions: List<AppShortcutAction>,
         allApps: List<AppInfo>,
+        profileDisplayNameOverrides: Map<String, String> = emptyMap(),
 ): List<DrawerProfileShortcutSectionUi> {
     if (actions.isEmpty()) return emptyList()
     val byProfile = actions.groupBy { it.profileKey }
@@ -290,7 +354,12 @@ fun groupShortcutActionsIntoProfileSections(
                 null
             }
     if (userManager == null) {
-        return buildShortcutSectionsWithoutUserManager(context, byProfile, allApps)
+        return buildShortcutSectionsWithoutUserManager(
+                context,
+                byProfile,
+                allApps,
+                profileDisplayNameOverrides,
+        )
     }
     val byUser = allApps.filter { it.userHandle != null }.groupBy { it.userHandle!! }
     val orderedUsers =
@@ -307,7 +376,12 @@ fun groupShortcutActionsIntoProfileSections(
             add(
                     DrawerProfileShortcutSectionUi(
                             id = "owner",
-                            title = context.getString(R.string.drawer_section_personal),
+                            title =
+                                    resolvedProfileDisplayTitle(
+                                            profileDisplayNameOverrides,
+                                            "0",
+                                            context.getString(R.string.drawer_section_personal),
+                                    ),
                             actions = ownerActions,
                     )
             )
@@ -325,6 +399,7 @@ fun groupShortcutActionsIntoProfileSections(
                                             user = user,
                                             userManager = userManager,
                                             totalSecondaryProfiles = orderedUsers.size,
+                                            profileDisplayNameOverrides = profileDisplayNameOverrides,
                                     ),
                             actions = sectionActions,
                     )
@@ -337,6 +412,7 @@ private fun buildShortcutSectionsWithoutUserManager(
         context: Context,
         byProfile: Map<String, List<AppShortcutAction>>,
         allApps: List<AppInfo>,
+        profileDisplayNameOverrides: Map<String, String>,
 ): List<DrawerProfileShortcutSectionUi> {
     return buildList {
         val ownerActions = sortShortcutActionsAlphabetically(byProfile["0"].orEmpty())
@@ -344,7 +420,12 @@ private fun buildShortcutSectionsWithoutUserManager(
             add(
                     DrawerProfileShortcutSectionUi(
                             id = "owner",
-                            title = context.getString(R.string.drawer_section_personal),
+                            title =
+                                    resolvedProfileDisplayTitle(
+                                            profileDisplayNameOverrides,
+                                            "0",
+                                            context.getString(R.string.drawer_section_personal),
+                                    ),
                             actions = ownerActions,
                     )
             )
@@ -354,7 +435,7 @@ private fun buildShortcutSectionsWithoutUserManager(
             val pk = appProfileKey(user)
             val sectionActions = sortShortcutActionsAlphabetically(byProfile[pk].orEmpty())
             if (sectionActions.isEmpty()) continue
-            val title =
+            val defaultTitle =
                     when {
                         byUser.keys.size == 1 &&
                                 !ProfileHeuristics.isLikelyCloneOrParallelProfile(context, user) ->
@@ -366,7 +447,7 @@ private fun buildShortcutSectionsWithoutUserManager(
             add(
                     DrawerProfileShortcutSectionUi(
                             id = "u_${user.hashCode()}",
-                            title = title,
+                            title = resolvedProfileDisplayTitle(profileDisplayNameOverrides, pk, defaultTitle),
                             actions = sectionActions,
                     )
             )

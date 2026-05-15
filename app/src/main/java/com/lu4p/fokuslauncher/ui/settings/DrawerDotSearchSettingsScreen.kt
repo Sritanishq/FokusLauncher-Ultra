@@ -291,6 +291,7 @@ fun DrawerDotSearchSettingsScreen(
                 searchLabel = null,
                 emptyStateText = stringResource(R.string.settings_dot_search_no_web_search_apps),
                 useSystemSoundOnItemClick = false,
+                profileDisplayNameOverrides = uiState.profileDisplayNameOverrides,
         )
     }
 
@@ -317,6 +318,7 @@ fun DrawerDotSearchSettingsScreen(
                 },
                 onDismiss = { showAliasShortcutPicker = false },
                 includeWidgetPageTarget = false,
+                profileDisplayNameOverrides = uiState.profileDisplayNameOverrides,
         )
     }
 
@@ -333,6 +335,7 @@ fun DrawerDotSearchSettingsScreen(
                 searchLabel = null,
                 emptyStateText = stringResource(R.string.settings_dot_search_no_web_search_apps),
                 useSystemSoundOnItemClick = false,
+                profileDisplayNameOverrides = uiState.profileDisplayNameOverrides,
         )
     }
 
