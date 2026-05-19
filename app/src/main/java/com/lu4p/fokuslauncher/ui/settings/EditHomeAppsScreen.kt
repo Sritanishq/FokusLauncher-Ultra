@@ -27,8 +27,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lu4p.fokuslauncher.R
 import com.lu4p.fokuslauncher.data.model.AppInfo
 import com.lu4p.fokuslauncher.data.model.FavoriteApp
-import com.lu4p.fokuslauncher.data.model.appProfileKey
-import com.lu4p.fokuslauncher.data.model.drawerOpenCountKey
+import com.lu4p.fokuslauncher.data.model.appListStableKey
+import com.lu4p.fokuslauncher.data.model.favoriteAppStableKey
 import com.lu4p.fokuslauncher.ui.components.EditorScreenScaffold
 import com.lu4p.fokuslauncher.ui.drawer.DrawerProfileSectionUi
 import com.lu4p.fokuslauncher.ui.drawer.groupAppsIntoProfileSections
@@ -72,12 +72,12 @@ fun EditHomeAppsScreen(
     ) { searchQuery, listState ->
         val checkedKeys =
                 remember(editFavorites) {
-                    editFavorites.map { drawerOpenCountKey(it.packageName, it.profileKey) }.toSet()
+                    editFavorites.map { favoriteAppStableKey(it) }.toSet()
                 }
         val uncheckedApps =
                 remember(allApps, checkedKeys, searchQuery) {
                     allApps
-                            .filter { drawerOpenCountKey(it.packageName, it.userHandle) !in checkedKeys }
+                            .filter { appListStableKey(it) !in checkedKeys }
                             .let { list ->
                                 if (searchQuery.isBlank()) list
                                 else list.filter { it.label.containsNormalizedSearch(searchQuery) }
@@ -128,16 +128,13 @@ private fun ReorderableEditHomeAppsList(
                 count = editFavorites.size,
                 key = {
                     val fav = editFavorites[it]
-                    "checked_${drawerOpenCountKey(fav.packageName, fav.profileKey)}"
+                    "checked_${favoriteAppStableKey(fav)}"
                 }
         ) { index ->
             val fav = editFavorites[index]
             val matchingApp =
-                    remember(fav.packageName, fav.profileKey, allApps) {
-                        allApps.find {
-                            it.packageName == fav.packageName &&
-                                    appProfileKey(it.userHandle) == fav.profileKey
-                        }
+                    remember(fav, allApps) {
+                        allApps.find { favoriteAppStableKey(fav) == appListStableKey(it) }
                     }
             val profileBadge =
                     remember(fav, matchingApp, profileDisplayNameOverrides, context) {
@@ -170,10 +167,8 @@ private fun ReorderableEditHomeAppsList(
                         checked = true,
                         onCheckedChange =
                                 rememberBooleanChangeWithSystemSound {
-                                    allApps.find {
-                                        it.packageName == fav.packageName &&
-                                                appProfileKey(it.userHandle) == fav.profileKey
-                                    }?.let { onToggle(it) }
+                                    allApps.find { favoriteAppStableKey(fav) == appListStableKey(it) }
+                                            ?.let { onToggle(it) }
                                 },
                 ) {
                     Column(modifier = Modifier.weight(1f)) {

@@ -44,6 +44,7 @@ fun AppActionSheet(
     onRename: (String) -> Unit,
     onSetCategory: (String) -> Unit,
     onHide: (AppInfo) -> Unit,
+    onRemoveShortcut: ((AppInfo) -> Unit)? = null,
     isOnHomeScreen: Boolean = false
 ) {
     val context = LocalContext.current
@@ -127,29 +128,43 @@ fun AppActionSheet(
                 testTag = "action_app_info",
         )
 
-        SheetActionRow(
-                label = stringResource(R.string.action_hide),
-                onClick = {
-                    onHide(app)
-                    onDismiss()
-                },
-                icon = Icons.Default.VisibilityOff,
-                testTag = "action_hide",
-        )
+        if (app.launcherShortcutId != null && onRemoveShortcut != null) {
+            SheetActionRow(
+                    label = stringResource(R.string.action_remove_shortcut),
+                    onClick = {
+                        onRemoveShortcut(app)
+                        onDismiss()
+                    },
+                    icon = Icons.Default.Delete,
+                    testTag = "action_remove_shortcut",
+            )
+        } else {
+            SheetActionRow(
+                    label = stringResource(R.string.action_hide),
+                    onClick = {
+                        onHide(app)
+                        onDismiss()
+                    },
+                    icon = Icons.Default.VisibilityOff,
+                    testTag = "action_hide",
+            )
+        }
 
-        SheetActionRow(
-                label = stringResource(R.string.action_uninstall),
-                onClick = {
-                    val intent = Intent(Intent.ACTION_DELETE).apply {
-                        data = "package:${app.packageName}".toUri()
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    context.startActivity(intent)
-                    onDismiss()
-                },
-                icon = Icons.Default.Delete,
-                testTag = "action_uninstall",
-        )
+        if (app.launcherShortcutId == null) {
+            SheetActionRow(
+                    label = stringResource(R.string.action_uninstall),
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_DELETE).apply {
+                            data = "package:${app.packageName}".toUri()
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(intent)
+                        onDismiss()
+                    },
+                    icon = Icons.Default.Delete,
+                    testTag = "action_uninstall",
+            )
+        }
     }
 }
 

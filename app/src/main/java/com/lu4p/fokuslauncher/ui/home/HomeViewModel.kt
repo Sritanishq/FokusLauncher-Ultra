@@ -23,7 +23,12 @@ import com.lu4p.fokuslauncher.data.local.PreferencesManager
 import com.lu4p.fokuslauncher.data.model.AppInfo
 import com.lu4p.fokuslauncher.data.model.AppShortcutAction
 import com.lu4p.fokuslauncher.data.model.FavoriteApp
+import com.lu4p.fokuslauncher.data.model.appListStableKey
 import com.lu4p.fokuslauncher.data.model.appMetadataKey
+import com.lu4p.fokuslauncher.data.model.appProfileKey
+import com.lu4p.fokuslauncher.data.model.favoriteAppStableKey
+import com.lu4p.fokuslauncher.data.model.HOST_APP_METADATA_SENTINEL
+import com.lu4p.fokuslauncher.data.model.metadataSettingsStableKey
 import com.lu4p.fokuslauncher.data.model.appProfileKey
 import com.lu4p.fokuslauncher.data.model.HomeDateFormatStyle
 import com.lu4p.fokuslauncher.data.model.HomeAlignment
@@ -146,9 +151,11 @@ class HomeViewModel @Inject constructor(
         _appNameMap
     ) { favs, renames, appNames ->
         favs.map { fav ->
-            val appKey = appMetadataKey(fav.packageName, fav.profileKey)
+            val appKey = favoriteAppStableKey(fav)
             val resolvedName = renames[appKey]
+                ?: renames[appMetadataKey(fav.packageName, fav.profileKey)]
                 ?: appNames[appKey]
+                ?: appNames[appMetadataKey(fav.packageName, fav.profileKey)]
                 ?: fav.label
             fav.copy(label = resolvedName)
         }
@@ -287,7 +294,11 @@ class HomeViewModel @Inject constructor(
             appRepository.getAllRenamedApps().collect { renamedApps ->
                 _renameMap.value =
                     renamedApps.associate {
-                        appMetadataKey(it.packageName, it.profileKey) to it.customName
+                        metadataSettingsStableKey(
+                                it.packageName,
+                                it.profileKey,
+                                it.launcherShortcutId,
+                        ) to it.customName
                     }
             }
         }
@@ -348,13 +359,13 @@ class HomeViewModel @Inject constructor(
             return false
         }
         applyInstalledAppsSnapshot(apps)
-        val installedAppKeys = apps.map { appMetadataKey(it.packageName, it.userHandle) }.toSet()
+        val installedAppKeys = apps.map { appListStableKey(it) }.toSet()
         val currentFavorites = rawFavorites.value
         val nonSentinel = currentFavorites.filterNot { it.isPhoneFavoriteSentinel() }
         val missingFavoriteKeys =
                 nonSentinel
                         .asSequence()
-                        .map { appMetadataKey(it.packageName, it.profileKey) }
+                        .map { favoriteAppStableKey(it) }
                         .filterNot(installedAppKeys::contains)
                         .toSet()
         val launchableMissing =
@@ -362,8 +373,8 @@ class HomeViewModel @Inject constructor(
         val updatedFavorites =
                 currentFavorites.filter {
                     it.packageName == ShortcutTarget.PHONE_FAVORITE_SENTINEL_PACKAGE ||
-                            appMetadataKey(it.packageName, it.profileKey) in installedAppKeys ||
-                            appMetadataKey(it.packageName, it.profileKey) in launchableMissing
+                            favoriteAppStableKey(it) in installedAppKeys ||
+                            favoriteAppStableKey(it) in launchableMissing
                 }
         if (updatedFavorites.size != currentFavorites.size) {
             preferencesManager.setFavorites(updatedFavorites)
@@ -373,7 +384,7 @@ class HomeViewModel @Inject constructor(
 
     private fun applyInstalledAppsSnapshot(apps: List<AppInfo>) {
         _allInstalledApps.value = apps
-        _appNameMap.value = apps.associate { appMetadataKey(it.packageName, it.userHandle) to it.label }
+        _appNameMap.value = apps.associate { appMetadataKey(it) to it.label }
     }
 
     private fun loadInstalledAppsForEditing(
@@ -420,18 +431,28 @@ class HomeViewModel @Inject constructor(
 
     fun toggleAppOnHomeScreen(app: AppInfo) {
         val current = _editFavorites.value.toMutableList()
-        val profileKey = appProfileKey(app.userHandle)
+        val stableKey = appListStableKey(app)
         current.toggleItem(
-                predicate = { it.matches(app.packageName, profileKey) },
+                predicate = { favoriteAppStableKey(it) == stableKey },
                 factory = {
                     val resolvedName =
-                            _renameMap.value[appMetadataKey(app.packageName, profileKey)] ?: app.label
+                            _renameMap.value[appMetadataKey(app)] ?: app.label
+                    val iconPackage =
+                            app.launcherShortcutId?.let { shortcutId ->
+                                ShortcutTarget.encode(
+                                        ShortcutTarget.LauncherShortcut(
+                                                packageName = app.packageName,
+                                                shortcutId = shortcutId,
+                                        )
+                                )
+                            }
+                                    ?: ""
                     FavoriteApp(
                             label = resolvedName,
                             packageName = app.packageName,
                             iconName = "circle",
-                            iconPackage = "",
-                            profileKey = profileKey,
+                            iconPackage = iconPackage,
+                            profileKey = appProfileKey(app.userHandle),
                     )
                 },
         )
@@ -564,10 +585,19 @@ class HomeViewModel @Inject constructor(
     fun hideApp(favorite: FavoriteApp) {
         if (endAppMenuIfPhoneFavoriteSentinel(favorite)) return
         viewModelScope.launch {
-            appRepository.hideApp(favorite.packageName, favorite.profileKey)
-            // Also remove from home-screen favorites
+            val launcherShortcutId =
+                    when (val target = favorite.resolvedIconTarget) {
+                        is ShortcutTarget.LauncherShortcut -> target.shortcutId
+                        else -> HOST_APP_METADATA_SENTINEL
+                    }
+            appRepository.hideApp(
+                    favorite.packageName,
+                    favorite.profileKey,
+                    launcherShortcutId,
+            )
             val current = rawFavorites.value.toMutableList()
-            current.removeAll { it.matches(favorite.packageName, favorite.profileKey) }
+            val favoriteKey = favoriteAppStableKey(favorite)
+            current.removeAll { favoriteAppStableKey(it) == favoriteKey }
             preferencesManager.setFavorites(current)
         }
         dismissAppMenu()

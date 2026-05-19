@@ -598,12 +598,14 @@ private fun SettingsScreenContent(
                 headerRes = R.string.settings_section_hidden_apps,
                 emptyTextRes = R.string.settings_no_hidden_apps,
                 apps = uiState.hiddenApps,
-                key = { "${it.packageName}|${it.profileKey}" },
+                key = { "hidden_${it.stableKey}" },
                 label = { it.label },
                 subtitle = { app ->
                     app.profileLabel?.let { pl -> "$pl • ${app.packageName}" } ?: app.packageName
                 },
-                onRowClick = { viewModel.unhideApp(it.packageName, it.profileKey) },
+                onRowClick = {
+                    viewModel.unhideApp(it.packageName, it.profileKey, it.launcherShortcutId)
+                },
                 trailingContent = {
                     Spacer(Modifier.width(8.dp))
                     LauncherIcon(
@@ -620,12 +622,14 @@ private fun SettingsScreenContent(
                 headerRes = R.string.settings_section_renamed_apps,
                 emptyTextRes = R.string.settings_no_renamed_apps,
                 apps = uiState.renamedApps,
-                key = { "${it.packageName}|${it.profileKey}" },
+                key = { "renamed_${it.stableKey}" },
                 label = { it.customName },
                 subtitle = { app ->
                     app.profileLabel?.let { pl -> "$pl • ${app.packageName}" } ?: app.packageName
                 },
-                onRowClick = { viewModel.removeRename(it.packageName, it.profileKey) },
+                onRowClick = {
+                    viewModel.removeRename(it.packageName, it.profileKey, it.launcherShortcutId)
+                },
                 trailingContent = {
                     Spacer(Modifier.width(8.dp))
                     LauncherIcon(

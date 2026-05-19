@@ -34,6 +34,9 @@ import com.lu4p.fokuslauncher.data.model.DotSearchTargetMode
 import com.lu4p.fokuslauncher.data.model.ShortcutTarget
 import com.lu4p.fokuslauncher.data.model.appMetadataKey
 import com.lu4p.fokuslauncher.data.model.appProfileKey
+import com.lu4p.fokuslauncher.data.model.HOST_APP_METADATA_SENTINEL
+import com.lu4p.fokuslauncher.data.model.launcherShortcutIdForMetadata
+import com.lu4p.fokuslauncher.data.model.overlayCategory
 import com.lu4p.fokuslauncher.data.model.SystemCategoryKeys
 import com.lu4p.fokuslauncher.utils.PrivateSpaceManager
 import com.lu4p.fokuslauncher.utils.registerBroadcastReceiverNotExported
@@ -703,7 +706,7 @@ constructor(
                         profileKey = "0",
                 )
         )
-        apps.forEach { app ->
+        apps.filter { it.launcherShortcutId == null }.forEach { app ->
             val profileKey = appProfileKey(app.userHandle)
             actions.add(
                 AppShortcutAction(
@@ -759,7 +762,7 @@ constructor(
                 }
         }
 
-        return actions.sortedWith(
+        return actions.distinctBy { it.id }.sortedWith(
             compareBy<AppShortcutAction> { it.profileKey }
                 .thenBy { it.appLabel.lowercase() }
                 .thenBy { it.actionLabel.lowercase() }
@@ -774,14 +777,63 @@ constructor(
     /** Returns a Flow of all hidden package names. */
     fun getHiddenApps(): Flow<List<HiddenAppEntity>> = appDao.getHiddenApps()
 
-    /** Hides an app by package name. */
-    suspend fun hideApp(packageName: String, profileKey: String) {
-        appDao.hideApp(HiddenAppEntity(packageName, profileKey))
+    /** Hides an app row by package, profile, and optional launcher shortcut id. */
+    suspend fun hideApp(
+            packageName: String,
+            profileKey: String,
+            launcherShortcutId: String = HOST_APP_METADATA_SENTINEL,
+    ) {
+        appDao.hideApp(HiddenAppEntity(packageName, profileKey, launcherShortcutId))
     }
 
-    /** Unhides an app by package name. */
-    suspend fun unhideApp(packageName: String, profileKey: String) {
-        appDao.unhideApp(HiddenAppEntity(packageName, profileKey))
+    /** Unhides an app row matching the persisted shortcut id. */
+    suspend fun unhideApp(
+            packageName: String,
+            profileKey: String,
+            launcherShortcutId: String,
+    ) {
+        appDao.unhideApp(HiddenAppEntity(packageName, profileKey, launcherShortcutId))
+    }
+
+    /** Hides the given installed app row (host or PWA). */
+    suspend fun hideApp(app: AppInfo) {
+        hideApp(
+                packageName = app.packageName,
+                profileKey = appProfileKey(app.userHandle),
+                launcherShortcutId = launcherShortcutIdForMetadata(app),
+        )
+    }
+
+    /** Unpins a launcher shortcut (PWA) from the system and refreshes the app cache. */
+    fun unpinLauncherShortcut(
+            packageName: String,
+            shortcutId: String,
+            userHandle: UserHandle? = null,
+    ): Boolean {
+        val launcherApps = launcherAppsOrNull() ?: return false
+        val user = userHandle ?: Process.myUserHandle()
+        return try {
+            val queryFlags =
+                    LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED or
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                LauncherApps.ShortcutQuery.FLAG_MATCH_CACHED
+                            } else {
+                                0
+                            }
+            val query =
+                    LauncherApps.ShortcutQuery()
+                            .setPackage(packageName)
+                            .setQueryFlags(queryFlags)
+            val remainingIds =
+                    launcherApps.getShortcuts(query, user).orEmpty().map { it.id }.filterNot {
+                        it == shortcutId
+                    }
+            launcherApps.pinShortcuts(packageName, remainingIds, user)
+            invalidateCache()
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     // --- Renamed Apps (Room) ---
@@ -790,13 +842,39 @@ constructor(
     fun getAllRenamedApps(): Flow<List<RenamedAppEntity>> = appDao.getAllRenamedApps()
 
     /** Renames an app with a custom display name. */
-    suspend fun renameApp(packageName: String, profileKey: String, customName: String) {
-        appDao.renameApp(RenamedAppEntity(packageName, profileKey, customName))
+    suspend fun renameApp(
+            packageName: String,
+            profileKey: String,
+            customName: String,
+            launcherShortcutId: String = HOST_APP_METADATA_SENTINEL,
+    ) {
+        appDao.renameApp(
+                RenamedAppEntity(
+                        packageName,
+                        profileKey,
+                        customName,
+                        launcherShortcutId,
+                )
+        )
+    }
+
+    /** Renames the given installed app row (host or PWA). */
+    suspend fun renameApp(app: AppInfo, customName: String) {
+        renameApp(
+                packageName = app.packageName,
+                profileKey = appProfileKey(app.userHandle),
+                customName = customName,
+                launcherShortcutId = launcherShortcutIdForMetadata(app),
+        )
     }
 
     /** Removes a custom app name (reverts to system name). */
-    suspend fun removeRename(packageName: String, profileKey: String) {
-        appDao.removeRename(packageName, profileKey)
+    suspend fun removeRename(
+            packageName: String,
+            profileKey: String,
+            launcherShortcutId: String,
+    ) {
+        appDao.removeRename(packageName, profileKey, launcherShortcutId)
     }
 
     // --- App Categories (Room) ---
@@ -810,9 +888,29 @@ constructor(
             }
 
     /** Assigns a category to an app. */
-    suspend fun setAppCategory(packageName: String, profileKey: String, category: String) {
+    suspend fun setAppCategory(
+            packageName: String,
+            profileKey: String,
+            category: String,
+            launcherShortcutId: String = HOST_APP_METADATA_SENTINEL,
+    ) {
         appDao.setAppCategory(
-                AppCategoryEntity(packageName, profileKey, normalizeCategory(category))
+                AppCategoryEntity(
+                        packageName,
+                        profileKey,
+                        normalizeCategory(category),
+                        launcherShortcutId,
+                )
+        )
+    }
+
+    /** Assigns a category to the given installed app row (host or PWA). */
+    suspend fun setAppCategory(app: AppInfo, category: String) {
+        setAppCategory(
+                packageName = app.packageName,
+                profileKey = appProfileKey(app.userHandle),
+                category = category,
+                launcherShortcutId = launcherShortcutIdForMetadata(app),
         )
     }
 
@@ -855,7 +953,8 @@ constructor(
                     AppCategoryEntity(
                         packageName = assignment.packageName,
                         profileKey = assignment.profileKey,
-                        category = newNormalized
+                        category = newNormalized,
+                        launcherShortcutId = assignment.launcherShortcutId,
                     )
                 )
             }
@@ -878,28 +977,21 @@ constructor(
         val normalized = normalizeCategory(name)
         if (normalized.isBlank() || isProtectedCategoryName(normalized)) return
 
-        val assignmentsByPackage =
-                appDao.getAllAppCategories().first().associateBy {
-                    appMetadataKey(it.packageName, it.profileKey)
-                }
+        val storedAssignments = appDao.getAllAppCategories().first()
 
         // Include apps whose category is only from system inference (no Room row); otherwise the
         // chip/list entry comes back immediately after removing the definition.
         val appsToUncategorize =
                 getInstalledApps().mapNotNull { app ->
-                    val stored =
-                            assignmentsByPackage[appMetadataKey(app.packageName, app.userHandle)]
                     val effective =
-                            if (stored != null) {
-                                normalizeCategory(stored.category)
-                            } else {
-                                normalizeCategory(app.category)
-                            }
+                            overlayCategory(app, storedAssignments)?.let(::normalizeCategory)
+                                    ?: normalizeCategory(app.category)
                     if (effective.equals(normalized, ignoreCase = true)) {
                         AppCategoryEntity(
                             packageName = app.packageName,
                             profileKey = appProfileKey(app.userHandle),
-                            category = ""
+                            category = "",
+                            launcherShortcutId = launcherShortcutIdForMetadata(app),
                         )
                     } else {
                         null

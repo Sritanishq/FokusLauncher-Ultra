@@ -15,7 +15,7 @@ import com.lu4p.fokuslauncher.data.database.entity.RenamedAppEntity
         AppCategoryEntity::class,
         AppCategoryDefinitionEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

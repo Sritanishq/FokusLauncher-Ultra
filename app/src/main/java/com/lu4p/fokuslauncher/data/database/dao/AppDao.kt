@@ -27,9 +27,20 @@ interface AppDao {
     suspend fun unhideApp(entity: HiddenAppEntity)
 
     @Query(
-        "SELECT EXISTS(SELECT 1 FROM hidden_apps WHERE packageName = :packageName AND profileKey = :profileKey)"
+        """
+        SELECT EXISTS(
+            SELECT 1 FROM hidden_apps
+            WHERE packageName = :packageName
+              AND profileKey = :profileKey
+              AND launcherShortcutId = :launcherShortcutId
+        )
+        """
     )
-    suspend fun isAppHidden(packageName: String, profileKey: String): Boolean
+    suspend fun isAppHidden(
+            packageName: String,
+            profileKey: String,
+            launcherShortcutId: String,
+    ): Boolean
 
     // --- Renamed Apps ---
 
@@ -39,13 +50,33 @@ interface AppDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun renameApp(entity: RenamedAppEntity)
 
-    @Query("DELETE FROM renamed_apps WHERE packageName = :packageName AND profileKey = :profileKey")
-    suspend fun removeRename(packageName: String, profileKey: String)
+    @Query(
+        """
+        DELETE FROM renamed_apps
+        WHERE packageName = :packageName
+          AND profileKey = :profileKey
+          AND launcherShortcutId = :launcherShortcutId
+        """
+    )
+    suspend fun removeRename(
+            packageName: String,
+            profileKey: String,
+            launcherShortcutId: String,
+    )
 
     @Query(
-        "SELECT customName FROM renamed_apps WHERE packageName = :packageName AND profileKey = :profileKey"
+        """
+        SELECT customName FROM renamed_apps
+        WHERE packageName = :packageName
+          AND profileKey = :profileKey
+          AND launcherShortcutId = :launcherShortcutId
+        """
     )
-    suspend fun getCustomName(packageName: String, profileKey: String): String?
+    suspend fun getCustomName(
+            packageName: String,
+            profileKey: String,
+            launcherShortcutId: String,
+    ): String?
 
     // --- App Categories ---
 
@@ -58,13 +89,33 @@ interface AppDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAppCategories(entities: List<AppCategoryEntity>)
 
-    @Query("DELETE FROM app_categories WHERE packageName = :packageName AND profileKey = :profileKey")
-    suspend fun removeAppCategory(packageName: String, profileKey: String)
+    @Query(
+        """
+        DELETE FROM app_categories
+        WHERE packageName = :packageName
+          AND profileKey = :profileKey
+          AND launcherShortcutId = :launcherShortcutId
+        """
+    )
+    suspend fun removeAppCategory(
+            packageName: String,
+            profileKey: String,
+            launcherShortcutId: String,
+    )
 
     @Query(
-        "SELECT category FROM app_categories WHERE packageName = :packageName AND profileKey = :profileKey"
+        """
+        SELECT category FROM app_categories
+        WHERE packageName = :packageName
+          AND profileKey = :profileKey
+          AND launcherShortcutId = :launcherShortcutId
+        """
     )
-    suspend fun getAppCategory(packageName: String, profileKey: String): String?
+    suspend fun getAppCategory(
+            packageName: String,
+            profileKey: String,
+            launcherShortcutId: String,
+    ): String?
 
     @Query("SELECT * FROM app_category_definitions ORDER BY position ASC, name COLLATE NOCASE ASC")
     fun getAllCategoryDefinitions(): Flow<List<AppCategoryDefinitionEntity>>

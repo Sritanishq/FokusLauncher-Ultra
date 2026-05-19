@@ -20,8 +20,10 @@ import com.lu4p.fokuslauncher.data.model.HomeDateFormatStyle
 import com.lu4p.fokuslauncher.data.model.LauncherFontScale
 import com.lu4p.fokuslauncher.data.model.HomeAlignment
 import com.lu4p.fokuslauncher.data.model.HomeShortcut
+import com.lu4p.fokuslauncher.data.model.HOST_APP_METADATA_SENTINEL
 import com.lu4p.fokuslauncher.data.model.ShortcutTarget
 import com.lu4p.fokuslauncher.data.model.appMetadataKey
+import com.lu4p.fokuslauncher.data.model.favoriteAppStableKey
 import com.lu4p.fokuslauncher.data.repository.AppRepository
 import com.lu4p.fokuslauncher.data.repository.RemovedApp
 import com.lu4p.fokuslauncher.data.repository.WeatherRepository
@@ -259,7 +261,9 @@ class HomeViewModelTest {
         viewModel.hideApp(workFavorite)
         testDispatcher.scheduler.advanceUntilIdle()
 
-        coVerify { appRepository.hideApp("com.lu4p.chrome", "42") }
+        coVerify {
+            appRepository.hideApp("com.lu4p.chrome", "42", HOST_APP_METADATA_SENTINEL)
+        }
         coVerify { preferencesManager.setFavorites(listOf(personalFavorite)) }
     }
 
@@ -609,6 +613,54 @@ class HomeViewModelTest {
 
         assertEquals("Chrome Work Custom", viewModel.editFavorites.value.single().label)
         assertEquals("42", viewModel.editFavorites.value.single().profileKey)
+    }
+
+    @Test
+    fun `toggleAppOnHomeScreen can add browser and PWA without replacing`() {
+        val browser = AppInfo("org.mozilla.firefox", "Firefox", null)
+        val pwa =
+                AppInfo(
+                        packageName = "org.mozilla.firefox",
+                        label = "Twitter",
+                        icon = null,
+                        launcherShortcutId = "pwa-twitter",
+                )
+        every { appRepository.getInstalledApps() } returns listOf(browser, pwa)
+
+        val viewModel = createViewModel()
+        viewModel.startEditingHomeApps()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.toggleAppOnHomeScreen(browser)
+        viewModel.toggleAppOnHomeScreen(pwa)
+
+        assertEquals(2, viewModel.editFavorites.value.size)
+        assertEquals(
+                setOf(
+                        favoriteAppStableKey(
+                                FavoriteApp(
+                                        label = "Firefox",
+                                        packageName = "org.mozilla.firefox",
+                                        profileKey = "0",
+                                )
+                        ),
+                        favoriteAppStableKey(
+                                FavoriteApp(
+                                        label = "Twitter",
+                                        packageName = "org.mozilla.firefox",
+                                        iconPackage =
+                                                ShortcutTarget.encode(
+                                                        ShortcutTarget.LauncherShortcut(
+                                                                "org.mozilla.firefox",
+                                                                "pwa-twitter",
+                                                        )
+                                                ),
+                                        profileKey = "0",
+                                )
+                        ),
+                ),
+                viewModel.editFavorites.value.map { favoriteAppStableKey(it) }.toSet(),
+        )
     }
 
     @Test

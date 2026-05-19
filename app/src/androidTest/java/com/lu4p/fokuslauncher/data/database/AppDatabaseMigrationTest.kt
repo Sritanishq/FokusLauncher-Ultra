@@ -142,4 +142,69 @@ class AppDatabaseMigrationTest {
             }
         }
     }
+
+    @Test
+    fun migrate4To5_preservesExistingHiddenAndRenamedRows() {
+        val dbName = "migration-test-v4-to-v5"
+        helper.createDatabase(dbName, 4).apply {
+            execSQL(
+                "CREATE TABLE IF NOT EXISTS `hidden_apps` (`packageName` TEXT NOT NULL, `profileKey` TEXT NOT NULL, PRIMARY KEY(`packageName`, `profileKey`))"
+            )
+            execSQL(
+                "CREATE TABLE IF NOT EXISTS `renamed_apps` (`packageName` TEXT NOT NULL, `profileKey` TEXT NOT NULL, `customName` TEXT NOT NULL, PRIMARY KEY(`packageName`, `profileKey`))"
+            )
+            execSQL(
+                "CREATE TABLE IF NOT EXISTS `app_categories` (`packageName` TEXT NOT NULL, `profileKey` TEXT NOT NULL, `category` TEXT NOT NULL, PRIMARY KEY(`packageName`, `profileKey`))"
+            )
+            execSQL(
+                "CREATE TABLE IF NOT EXISTS `app_category_definitions` (`name` TEXT NOT NULL, `position` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`name`))"
+            )
+            execSQL(
+                "INSERT INTO `hidden_apps` (`packageName`, `profileKey`) VALUES ('org.mozilla.firefox', '0')"
+            )
+            execSQL(
+                "INSERT INTO `renamed_apps` (`packageName`, `profileKey`, `customName`) VALUES ('org.mozilla.firefox', '0', 'My Browser')"
+            )
+            execSQL(
+                "INSERT INTO `app_categories` (`packageName`, `profileKey`, `category`) VALUES ('org.mozilla.firefox', '0', 'Productivity')"
+            )
+            close()
+        }
+
+        val migratedDb =
+            helper.runMigrationsAndValidate(
+                    dbName,
+                    5,
+                    true,
+                    AppModule.migration4To5,
+            )
+
+        migratedDb.use { db ->
+            db.query(
+                    "SELECT packageName, profileKey, launcherShortcutId FROM hidden_apps"
+            ).use { cursor ->
+                assertEquals(1, cursor.count)
+                cursor.moveToFirst()
+                assertEquals("org.mozilla.firefox", cursor.getString(0))
+                assertEquals("0", cursor.getString(1))
+                assertEquals("", cursor.getString(2))
+            }
+            db.query(
+                    "SELECT packageName, profileKey, customName, launcherShortcutId FROM renamed_apps"
+            ).use { cursor ->
+                assertEquals(1, cursor.count)
+                cursor.moveToFirst()
+                assertEquals("My Browser", cursor.getString(2))
+                assertEquals("", cursor.getString(3))
+            }
+            db.query(
+                    "SELECT packageName, profileKey, category, launcherShortcutId FROM app_categories"
+            ).use { cursor ->
+                assertEquals(1, cursor.count)
+                cursor.moveToFirst()
+                assertEquals("Productivity", cursor.getString(2))
+                assertEquals("", cursor.getString(3))
+            }
+        }
+    }
 }

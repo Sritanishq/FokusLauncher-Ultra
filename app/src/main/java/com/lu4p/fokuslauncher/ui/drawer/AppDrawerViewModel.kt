@@ -13,7 +13,12 @@ import com.lu4p.fokuslauncher.data.model.DrawerAppSortMode
 import com.lu4p.fokuslauncher.data.model.ReservedCategoryNames
 import com.lu4p.fokuslauncher.data.model.FavoriteApp
 import com.lu4p.fokuslauncher.data.model.ShortcutTarget
-import com.lu4p.fokuslauncher.data.model.appMetadataKey
+import com.lu4p.fokuslauncher.data.database.entity.AppCategoryEntity
+import com.lu4p.fokuslauncher.data.database.entity.HiddenAppEntity
+import com.lu4p.fokuslauncher.data.database.entity.RenamedAppEntity
+import com.lu4p.fokuslauncher.data.model.isAppHiddenByMetadata
+import com.lu4p.fokuslauncher.data.model.overlayCategory
+import com.lu4p.fokuslauncher.data.model.overlayCustomName
 import com.lu4p.fokuslauncher.data.model.appProfileKey
 import com.lu4p.fokuslauncher.data.model.appListStableKey
 import com.lu4p.fokuslauncher.data.model.drawerOpenCountKey
@@ -218,9 +223,9 @@ private fun AppDrawerUiState.withFilteredContent(
         )
 
 private data class DrawerMetadataSnapshot(
-        val hiddenSet: Set<String>,
-        val renameMap: Map<String, String>,
-        val categoryMap: Map<String, String>,
+        val hiddenApps: List<HiddenAppEntity>,
+        val renamedApps: List<RenamedAppEntity>,
+        val categoryEntities: List<AppCategoryEntity>,
         val definedCategories: List<String>,
 )
 
@@ -240,9 +245,9 @@ constructor(
 
     private val _events = MutableSharedFlow<DrawerEvent>()
     val events: SharedFlow<DrawerEvent> = _events.asSharedFlow()
-    private var latestHiddenSet: Set<String> = emptySet()
-    private var latestRenameMap: Map<String, String> = emptyMap()
-    private var latestCategoryMap: Map<String, String> = emptyMap()
+    private var latestHiddenApps: List<HiddenAppEntity> = emptyList()
+    private var latestRenamedApps: List<RenamedAppEntity> = emptyList()
+    private var latestCategoryEntities: List<AppCategoryEntity> = emptyList()
     private var latestDefinedCategories: List<String> = emptyList()
     private var latestDrawerSortMode: DrawerAppSortMode = DrawerAppSortMode.ALPHABETICAL
     private var latestOpenCounts: Map<String, Int> = emptyMap()
@@ -347,9 +352,9 @@ constructor(
                         synchronized(optimisticallyRemovedKeys) { optimisticallyRemovedKeys.toSet() }
                 val metadata =
                         DrawerMetadataSnapshot(
-                                latestHiddenSet,
-                                latestRenameMap,
-                                latestCategoryMap,
+                                latestHiddenApps,
+                                latestRenamedApps,
+                                latestCategoryEntities,
                                 latestDefinedCategories,
                         )
                 val reorderedPrivate =
@@ -418,9 +423,9 @@ constructor(
         val filtered =
                 applyMetadataOverlays(
                                 apps = raw,
-                                hiddenSet = metadata.hiddenSet,
-                                renameMap = metadata.renameMap,
-                                categoryMap = metadata.categoryMap,
+                                hiddenApps = metadata.hiddenApps,
+                                renamedApps = metadata.renamedApps,
+                                categoryEntities = metadata.categoryEntities,
                         )
                         .filterNot { app ->
                             drawerOpenCountKey(app.packageName, app.userHandle) in removedSnapshot
@@ -500,9 +505,9 @@ constructor(
                         synchronized(optimisticallyRemovedKeys) { optimisticallyRemovedKeys.toSet() }
                 val metadata =
                         DrawerMetadataSnapshot(
-                                latestHiddenSet,
-                                latestRenameMap,
-                                latestCategoryMap,
+                                latestHiddenApps,
+                                latestRenamedApps,
+                                latestCategoryEntities,
                                 latestDefinedCategories,
                         )
                 val privateApps =
@@ -565,9 +570,9 @@ constructor(
                                 }
                         val metadata =
                                 DrawerMetadataSnapshot(
-                                        latestHiddenSet,
-                                        latestRenameMap,
-                                        latestCategoryMap,
+                                        latestHiddenApps,
+                                        latestRenamedApps,
+                                        latestCategoryEntities,
                                         latestDefinedCategories,
                                 )
                         val reorderedPrivate =
@@ -614,9 +619,9 @@ constructor(
         viewModelScope.launch {
             rebuildVisibleApps(
                     DrawerMetadataSnapshot(
-                            latestHiddenSet,
-                            latestRenameMap,
-                            latestCategoryMap,
+                            latestHiddenApps,
+                            latestRenamedApps,
+                            latestCategoryEntities,
                             latestDefinedCategories,
                     )
             )
@@ -636,23 +641,16 @@ constructor(
                             appRepository.getAllCategoryDefinitions()
                     ) { hiddenApps, renamedApps, categories, categoryDefinitions ->
                 DrawerMetadataSnapshot(
-                        hiddenSet =
-                                hiddenApps.map { appMetadataKey(it.packageName, it.profileKey) }.toSet(),
-                        renameMap =
-                                renamedApps.associate {
-                                    appMetadataKey(it.packageName, it.profileKey) to it.customName
-                                },
-                        categoryMap =
-                                categories.associate {
-                                    appMetadataKey(it.packageName, it.profileKey) to it.category
-                                },
+                        hiddenApps = hiddenApps,
+                        renamedApps = renamedApps,
+                        categoryEntities = categories,
                         definedCategories = categoryDefinitions.map { it.name },
                 )
             }
                     .collect { snapshot ->
-                        latestHiddenSet = snapshot.hiddenSet
-                        latestRenameMap = snapshot.renameMap
-                        latestCategoryMap = snapshot.categoryMap
+                        latestHiddenApps = snapshot.hiddenApps
+                        latestRenamedApps = snapshot.renamedApps
+                        latestCategoryEntities = snapshot.categoryEntities
                         latestDefinedCategories = snapshot.definedCategories
                         rebuildVisibleApps(snapshot)
                     }
@@ -665,9 +663,9 @@ constructor(
                 synchronized(optimisticallyRemovedKeys) { optimisticallyRemovedKeys.clear() }
                 rebuildVisibleApps(
                         DrawerMetadataSnapshot(
-                                latestHiddenSet,
-                                latestRenameMap,
-                                latestCategoryMap,
+                                latestHiddenApps,
+                                latestRenamedApps,
+                                latestCategoryEntities,
                                 latestDefinedCategories,
                         )
                 )
@@ -696,9 +694,9 @@ constructor(
             val visible =
                     applyMetadataOverlays(
                                     apps = base,
-                                    hiddenSet = metadata.hiddenSet,
-                                    renameMap = metadata.renameMap,
-                                    categoryMap = metadata.categoryMap,
+                                    hiddenApps = metadata.hiddenApps,
+                                    renamedApps = metadata.renamedApps,
+                                    categoryEntities = metadata.categoryEntities,
                             )
                             .filterNot { app ->
                                 drawerOpenCountKey(app.packageName, app.userHandle) in
@@ -739,9 +737,9 @@ constructor(
                     synchronized(optimisticallyRemovedKeys) { optimisticallyRemovedKeys.toSet() }
             val metadata =
                     DrawerMetadataSnapshot(
-                            latestHiddenSet,
-                            latestRenameMap,
-                            latestCategoryMap,
+                            latestHiddenApps,
+                            latestRenamedApps,
+                            latestCategoryEntities,
                             latestDefinedCategories,
                     )
             val visible =
@@ -1071,8 +1069,18 @@ constructor(
 
     fun hideApp(app: AppInfo) {
         viewModelScope.launch {
-            appRepository.hideApp(app.packageName, appProfileKey(app.userHandle))
-            // The Flow observer in observeHiddenAndRenamed will rebuild the list
+            appRepository.hideApp(app)
+        }
+    }
+
+    fun removeLauncherShortcut(app: AppInfo) {
+        val shortcutId = app.launcherShortcutId ?: return
+        viewModelScope.launch {
+            appRepository.unpinLauncherShortcut(
+                    packageName = app.packageName,
+                    shortcutId = shortcutId,
+                    userHandle = app.userHandle,
+            )
         }
     }
 
@@ -1111,14 +1119,13 @@ constructor(
 
     fun renameApp(app: AppInfo, newName: String) {
         viewModelScope.launch {
-            appRepository.renameApp(app.packageName, appProfileKey(app.userHandle), newName)
-            // The Flow observer in observeHiddenAndRenamed will rebuild the list
+            appRepository.renameApp(app, newName)
         }
     }
 
     fun setAppCategory(app: AppInfo, category: String) {
         viewModelScope.launch {
-            appRepository.setAppCategory(app.packageName, appProfileKey(app.userHandle), category)
+            appRepository.setAppCategory(app, category)
             dismissActionSheet()
         }
     }
@@ -1174,9 +1181,9 @@ constructor(
                         sortPrivateSpaceAppsCachedSuspend(
                                 applyMetadataOverlays(
                                         apps = privateSpaceManager.getPrivateSpaceApps(),
-                                        hiddenSet = latestHiddenSet,
-                                        renameMap = latestRenameMap,
-                                        categoryMap = latestCategoryMap
+                                        hiddenApps = latestHiddenApps,
+                                        renamedApps = latestRenamedApps,
+                                        categoryEntities = latestCategoryEntities,
                                 )
                         )
                     } else {
@@ -1332,17 +1339,16 @@ constructor(
 
     private fun applyMetadataOverlays(
             apps: List<AppInfo>,
-            hiddenSet: Set<String>,
-            renameMap: Map<String, String>,
-            categoryMap: Map<String, String>
+            hiddenApps: List<HiddenAppEntity>,
+            renamedApps: List<RenamedAppEntity>,
+            categoryEntities: List<AppCategoryEntity>,
     ): List<AppInfo> {
         return apps
-                .filterNot { app -> appMetadataKey(app.packageName, app.userHandle) in hiddenSet }
+                .filterNot { app -> isAppHiddenByMetadata(app, hiddenApps) }
                 .map { app ->
-                    val metadataKey = appMetadataKey(app.packageName, app.userHandle)
                     app.copy(
-                            label = renameMap[metadataKey] ?: app.label,
-                            category = categoryMap[metadataKey] ?: app.category
+                            label = overlayCustomName(app, renamedApps) ?: app.label,
+                            category = overlayCategory(app, categoryEntities) ?: app.category,
                     )
                 }
     }

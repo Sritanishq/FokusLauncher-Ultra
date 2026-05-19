@@ -1,24 +1,32 @@
 package com.lu4p.fokuslauncher
 
-import android.app.Activity
 import android.content.Intent
 import android.content.pm.LauncherApps
 import android.os.Build
 import android.os.Bundle
+import androidx.activity.ComponentActivity
+import com.lu4p.fokuslauncher.data.repository.AppRepository
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 /**
  * Accepts browser PWA/shortcut pin requests so browsers expose "Add to Home screen" while Fokus
  * is the default launcher. The pinned shortcut is stored by Android's launcher service and picked
  * up by AppRepository through LauncherApps pinned shortcuts.
  */
-class ConfirmPinShortcutActivity : Activity() {
+@AndroidEntryPoint
+class ConfirmPinShortcutActivity : ComponentActivity() {
+    @Inject lateinit var appRepository: AppRepository
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         if (intent?.action == LauncherApps.ACTION_CONFIRM_PIN_SHORTCUT) {
             val request = intent?.pinItemRequest()
             if (request?.requestType == LauncherApps.PinItemRequest.REQUEST_TYPE_SHORTCUT) {
-                request.accept()
+                if (request.accept()) {
+                    appRepository.invalidateCache()
+                }
             }
         }
 

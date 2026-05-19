@@ -67,6 +67,7 @@
     <string name="action_set_category">Set category</string>
     <string name="action_app_info">App info</string>
     <string name="action_hide">Hide</string>
+    <string name="action_remove_shortcut">Remove shortcut</string>
     <string name="action_uninstall">Uninstall</string>
     <string name="category_name_label">Category name</string>
     <string name="category_action_rename">Rename</string>

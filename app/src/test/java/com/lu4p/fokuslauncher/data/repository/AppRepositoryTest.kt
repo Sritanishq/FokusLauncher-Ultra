@@ -18,6 +18,8 @@ import com.lu4p.fokuslauncher.data.database.entity.HiddenAppEntity
 import com.lu4p.fokuslauncher.data.database.entity.RenamedAppEntity
 import com.lu4p.fokuslauncher.data.model.AddCategoryResult
 import com.lu4p.fokuslauncher.data.model.AppInfo
+import com.lu4p.fokuslauncher.data.model.HOST_APP_METADATA_SENTINEL
+import com.lu4p.fokuslauncher.data.model.AppShortcutAction
 import com.lu4p.fokuslauncher.data.model.SystemCategoryKeys
 import com.lu4p.fokuslauncher.utils.PrivateSpaceManager
 import com.lu4p.fokuslauncher.utils.containsNormalizedSearch
@@ -388,20 +390,48 @@ class AppRepositoryTest {
         assertTrue(result.none { it.launcherShortcutId == "pwa-twitter" })
     }
 
+    @Test
+    fun `getAllShortcutActions with browser and PWAs has no duplicate ids`() {
+        every {
+            launcherApps.getActivityList(null, myUser)
+        } returns listOf(createMockLauncherActivity("org.mozilla.firefox", "Firefox"))
+        every { launcherApps.getShortcuts(any(), myUser) } returns
+                listOf(
+                        createMockShortcut("pwa-twitter", "Twitter"),
+                        createMockShortcut("pwa-reddit", "Reddit"),
+                )
+
+        val result = repository.getAllShortcutActions()
+        val openAppActions =
+                result.filter {
+                    it.actionLabel == AppShortcutAction.OPEN_APP_LABEL &&
+                            it.target == com.lu4p.fokuslauncher.data.model.ShortcutTarget.App(
+                                    "org.mozilla.firefox",
+                            )
+                }
+
+        assertEquals(1, openAppActions.size)
+        assertEquals(result.size, result.distinctBy { it.id }.size)
+    }
+
     // --- Hidden Apps Tests ---
 
     @Test
     fun `hideApp delegates to DAO`() = runTest {
         repository.hideApp("com.lu4p.app1", "0")
 
-        coVerify { appDao.hideApp(HiddenAppEntity("com.lu4p.app1", "0")) }
+        coVerify {
+            appDao.hideApp(
+                    HiddenAppEntity("com.lu4p.app1", "0", HOST_APP_METADATA_SENTINEL)
+            )
+        }
     }
 
     @Test
     fun `unhideApp delegates to DAO`() = runTest {
-        repository.unhideApp("com.lu4p.app1", "0")
+        repository.unhideApp("com.lu4p.app1", "0", "")
 
-        coVerify { appDao.unhideApp(HiddenAppEntity("com.lu4p.app1", "0")) }
+        coVerify { appDao.unhideApp(HiddenAppEntity("com.lu4p.app1", "0", "")) }
     }
 
     @Test
@@ -422,7 +452,14 @@ class AppRepositoryTest {
         repository.renameApp("com.lu4p.app1", "0", "My Custom Name")
 
         coVerify {
-            appDao.renameApp(RenamedAppEntity("com.lu4p.app1", "0", "My Custom Name"))
+            appDao.renameApp(
+                    RenamedAppEntity(
+                            "com.lu4p.app1",
+                            "0",
+                            "My Custom Name",
+                            HOST_APP_METADATA_SENTINEL,
+                    )
+            )
         }
     }
 
@@ -437,7 +474,8 @@ class AppRepositoryTest {
                     AppCategoryEntity(
                             "com.lu4p.app1",
                             "0",
-                            "Productivity"
+                            "Productivity",
+                            HOST_APP_METADATA_SENTINEL,
                     )
             )
         }
@@ -455,7 +493,8 @@ class AppRepositoryTest {
                     AppCategoryEntity(
                             "com.lu4p.app1",
                             "0",
-                            "Productivity"
+                            "Productivity",
+                            HOST_APP_METADATA_SENTINEL,
                     )
             )
         }
@@ -559,7 +598,14 @@ class AppRepositoryTest {
 
         coVerify {
             appDao.deleteCategoryWithAppResets(
-                    listOf(AppCategoryEntity("com.lu4p.game", "0", "")),
+                    listOf(
+                            AppCategoryEntity(
+                                    "com.lu4p.game",
+                                    "0",
+                                    "",
+                                    HOST_APP_METADATA_SENTINEL,
+                            )
+                    ),
                     "Games"
             )
         }
@@ -585,7 +631,14 @@ class AppRepositoryTest {
 
         coVerify {
             appDao.deleteCategoryWithAppResets(
-                    listOf(AppCategoryEntity("com.lu4p.app1", "0", "")),
+                    listOf(
+                            AppCategoryEntity(
+                                    "com.lu4p.app1",
+                                    "0",
+                                    "",
+                                    HOST_APP_METADATA_SENTINEL,
+                            )
+                    ),
                     "Games"
             )
         }

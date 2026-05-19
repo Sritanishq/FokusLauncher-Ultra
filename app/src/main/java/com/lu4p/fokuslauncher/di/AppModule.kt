@@ -64,6 +64,78 @@ object AppModule {
             "ALTER TABLE `app_categories_new` RENAME TO `app_categories`",
         )
 
+    private val MIGRATION_4_TO_5_NEW_TABLES =
+        listOf(
+            "CREATE TABLE IF NOT EXISTS `hidden_apps_new` (`packageName` TEXT NOT NULL, `profileKey` TEXT NOT NULL, `launcherShortcutId` TEXT NOT NULL DEFAULT '', PRIMARY KEY(`packageName`, `profileKey`, `launcherShortcutId`))",
+            "CREATE TABLE IF NOT EXISTS `renamed_apps_new` (`packageName` TEXT NOT NULL, `profileKey` TEXT NOT NULL, `customName` TEXT NOT NULL, `launcherShortcutId` TEXT NOT NULL DEFAULT '', PRIMARY KEY(`packageName`, `profileKey`, `launcherShortcutId`))",
+            "CREATE TABLE IF NOT EXISTS `app_categories_new` (`packageName` TEXT NOT NULL, `profileKey` TEXT NOT NULL, `category` TEXT NOT NULL, `launcherShortcutId` TEXT NOT NULL DEFAULT '', PRIMARY KEY(`packageName`, `profileKey`, `launcherShortcutId`))",
+        )
+
+    private val MIGRATION_4_TO_5_FINALIZE =
+        listOf(
+            "DROP TABLE `hidden_apps`",
+            "ALTER TABLE `hidden_apps_new` RENAME TO `hidden_apps`",
+            "DROP TABLE `renamed_apps`",
+            "ALTER TABLE `renamed_apps_new` RENAME TO `renamed_apps`",
+            "DROP TABLE `app_categories`",
+            "ALTER TABLE `app_categories_new` RENAME TO `app_categories`",
+        )
+
+    val migration4To5 =
+        object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_4_TO_5_NEW_TABLES.forEach(db::execSQL)
+
+                db.query("SELECT packageName, profileKey FROM hidden_apps").use { cursor ->
+                    val packageIndex = cursor.getColumnIndexOrThrow("packageName")
+                    val profileIndex = cursor.getColumnIndexOrThrow("profileKey")
+                    while (cursor.moveToNext()) {
+                        db.execSQL(
+                                "INSERT OR REPLACE INTO `hidden_apps_new` (`packageName`, `profileKey`, `launcherShortcutId`) VALUES (?, ?, '')",
+                                arrayOf(
+                                        cursor.getString(packageIndex),
+                                        cursor.getString(profileIndex),
+                                ),
+                        )
+                    }
+                }
+
+                db.query("SELECT packageName, profileKey, customName FROM renamed_apps").use { cursor ->
+                    val packageIndex = cursor.getColumnIndexOrThrow("packageName")
+                    val profileIndex = cursor.getColumnIndexOrThrow("profileKey")
+                    val nameIndex = cursor.getColumnIndexOrThrow("customName")
+                    while (cursor.moveToNext()) {
+                        db.execSQL(
+                                "INSERT OR REPLACE INTO `renamed_apps_new` (`packageName`, `profileKey`, `customName`, `launcherShortcutId`) VALUES (?, ?, ?, '')",
+                                arrayOf(
+                                        cursor.getString(packageIndex),
+                                        cursor.getString(profileIndex),
+                                        cursor.getString(nameIndex),
+                                ),
+                        )
+                    }
+                }
+
+                db.query("SELECT packageName, profileKey, category FROM app_categories").use { cursor ->
+                    val packageIndex = cursor.getColumnIndexOrThrow("packageName")
+                    val profileIndex = cursor.getColumnIndexOrThrow("profileKey")
+                    val categoryIndex = cursor.getColumnIndexOrThrow("category")
+                    while (cursor.moveToNext()) {
+                        db.execSQL(
+                                "INSERT OR REPLACE INTO `app_categories_new` (`packageName`, `profileKey`, `category`, `launcherShortcutId`) VALUES (?, ?, ?, '')",
+                                arrayOf(
+                                        cursor.getString(packageIndex),
+                                        cursor.getString(profileIndex),
+                                        cursor.getString(categoryIndex),
+                                ),
+                        )
+                    }
+                }
+
+                MIGRATION_4_TO_5_FINALIZE.forEach(db::execSQL)
+            }
+        }
+
     fun migration3To4(
         context: Context,
         profileKeyResolver: (Context, String) -> Set<String> = ::resolveInstalledProfileKeys
@@ -175,7 +247,7 @@ object AppModule {
         context,
         AppDatabase::class.java,
         "fokus_launcher_db"
-    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, migration3To4(context)).build()
+    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, migration3To4(context), migration4To5).build()
 
     @Provides
     @Singleton

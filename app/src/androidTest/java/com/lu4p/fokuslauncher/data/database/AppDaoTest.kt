@@ -45,7 +45,7 @@ class AppDaoTest {
     fun hideApp_addsToDatabase() = runTest {
         dao.hideApp(HiddenAppEntity("com.lu4p.app1", "0"))
 
-        val isHidden = dao.isAppHidden("com.lu4p.app1", "0")
+        val isHidden = dao.isAppHidden("com.lu4p.app1", "0", "")
         assertTrue(isHidden)
     }
 
@@ -54,13 +54,13 @@ class AppDaoTest {
         dao.hideApp(HiddenAppEntity("com.lu4p.app1", "0"))
         dao.unhideApp(HiddenAppEntity("com.lu4p.app1", "0"))
 
-        val isHidden = dao.isAppHidden("com.lu4p.app1", "0")
+        val isHidden = dao.isAppHidden("com.lu4p.app1", "0", "")
         assertFalse(isHidden)
     }
 
     @Test
     fun isAppHidden_returnsFalseForUnhiddenApp() = runTest {
-        val isHidden = dao.isAppHidden("com.lu4p.nonexistent", "0")
+        val isHidden = dao.isAppHidden("com.lu4p.nonexistent", "0", "")
         assertFalse(isHidden)
     }
 
@@ -106,13 +106,13 @@ class AppDaoTest {
         dao.hideApp(HiddenAppEntity("com.lu4p.app1", "0"))
         dao.hideApp(HiddenAppEntity("com.lu4p.app1", "10"))
 
-        assertTrue(dao.isAppHidden("com.lu4p.app1", "0"))
-        assertTrue(dao.isAppHidden("com.lu4p.app1", "10"))
+        assertTrue(dao.isAppHidden("com.lu4p.app1", "0", ""))
+        assertTrue(dao.isAppHidden("com.lu4p.app1", "10", ""))
 
         dao.unhideApp(HiddenAppEntity("com.lu4p.app1", "10"))
 
-        assertTrue(dao.isAppHidden("com.lu4p.app1", "0"))
-        assertFalse(dao.isAppHidden("com.lu4p.app1", "10"))
+        assertTrue(dao.isAppHidden("com.lu4p.app1", "0", ""))
+        assertFalse(dao.isAppHidden("com.lu4p.app1", "10", ""))
     }
 
     // --- Renamed Apps ---
@@ -121,7 +121,7 @@ class AppDaoTest {
     fun renameApp_storesCustomName() = runTest {
         dao.renameApp(RenamedAppEntity("com.lu4p.app1", "0", "My App"))
 
-        val name = dao.getCustomName("com.lu4p.app1", "0")
+        val name = dao.getCustomName("com.lu4p.app1", "0", "")
         assertEquals("My App", name)
     }
 
@@ -130,22 +130,22 @@ class AppDaoTest {
         dao.renameApp(RenamedAppEntity("com.lu4p.app1", "0", "Old Name"))
         dao.renameApp(RenamedAppEntity("com.lu4p.app1", "0", "New Name"))
 
-        val name = dao.getCustomName("com.lu4p.app1", "0")
+        val name = dao.getCustomName("com.lu4p.app1", "0", "")
         assertEquals("New Name", name)
     }
 
     @Test
     fun removeRename_deletesEntry() = runTest {
         dao.renameApp(RenamedAppEntity("com.lu4p.app1", "0", "Custom"))
-        dao.removeRename("com.lu4p.app1", "0")
+        dao.removeRename("com.lu4p.app1", "0", "")
 
-        val name = dao.getCustomName("com.lu4p.app1", "0")
+        val name = dao.getCustomName("com.lu4p.app1", "0", "")
         assertNull(name)
     }
 
     @Test
     fun getCustomName_returnsNullForUnrenamedApp() = runTest {
-        val name = dao.getCustomName("com.lu4p.nonexistent", "0")
+        val name = dao.getCustomName("com.lu4p.nonexistent", "0", "")
         assertNull(name)
     }
 
@@ -168,13 +168,13 @@ class AppDaoTest {
         dao.renameApp(RenamedAppEntity("com.lu4p.app1", "0", "Personal"))
         dao.renameApp(RenamedAppEntity("com.lu4p.app1", "10", "Work"))
 
-        assertEquals("Personal", dao.getCustomName("com.lu4p.app1", "0"))
-        assertEquals("Work", dao.getCustomName("com.lu4p.app1", "10"))
+        assertEquals("Personal", dao.getCustomName("com.lu4p.app1", "0", ""))
+        assertEquals("Work", dao.getCustomName("com.lu4p.app1", "10", ""))
 
-        dao.removeRename("com.lu4p.app1", "10")
+        dao.removeRename("com.lu4p.app1", "10", "")
 
-        assertEquals("Personal", dao.getCustomName("com.lu4p.app1", "0"))
-        assertNull(dao.getCustomName("com.lu4p.app1", "10"))
+        assertEquals("Personal", dao.getCustomName("com.lu4p.app1", "0", ""))
+        assertNull(dao.getCustomName("com.lu4p.app1", "10", ""))
     }
 
     // --- App Categories ---
@@ -183,7 +183,7 @@ class AppDaoTest {
     fun setAppCategory_storesCategory() = runTest {
         dao.setAppCategory(AppCategoryEntity("com.lu4p.app1", "0", "Productivity"))
 
-        val category = dao.getAppCategory("com.lu4p.app1", "0")
+        val category = dao.getAppCategory("com.lu4p.app1", "0", "")
         assertEquals("Productivity", category)
     }
 
@@ -192,36 +192,36 @@ class AppDaoTest {
         dao.setAppCategory(AppCategoryEntity("com.lu4p.app1", "0", "Social"))
         dao.setAppCategory(AppCategoryEntity("com.lu4p.app1", "0", "Productivity"))
 
-        val category = dao.getAppCategory("com.lu4p.app1", "0")
+        val category = dao.getAppCategory("com.lu4p.app1", "0", "")
         assertEquals("Productivity", category)
     }
 
     @Test
     fun removeAppCategory_deletesEntry() = runTest {
         dao.setAppCategory(AppCategoryEntity("com.lu4p.app1", "0", "Social"))
-        dao.removeAppCategory("com.lu4p.app1", "0")
+        dao.removeAppCategory("com.lu4p.app1", "0", "")
 
-        val category = dao.getAppCategory("com.lu4p.app1", "0")
+        val category = dao.getAppCategory("com.lu4p.app1", "0", "")
         assertNull(category)
     }
 
     @Test
     fun getAppCategory_returnsNullForUncategorized() = runTest {
-        val category = dao.getAppCategory("com.lu4p.nonexistent", "0")
+        val category = dao.getAppCategory("com.lu4p.nonexistent", "0", "")
         assertNull(category)
     }
 
     @Test
-    fun getAppsByCategory_filtersCorrectly() = runTest {
+    fun getAllAppCategories_filtersByCategoryName() = runTest {
         dao.setAppCategory(AppCategoryEntity("com.lu4p.app1", "0", "Social"))
         dao.setAppCategory(AppCategoryEntity("com.lu4p.app2", "0", "Productivity"))
         dao.setAppCategory(AppCategoryEntity("com.lu4p.app3", "0", "Social"))
 
-        dao.getAppsByCategory("Social").test {
-            val socialApps = awaitItem()
-            assertEquals(2, socialApps.size)
-            assertTrue(socialApps.any { it.packageName == "com.lu4p.app1" })
-            assertTrue(socialApps.any { it.packageName == "com.lu4p.app3" })
+        dao.getAllAppCategories().test {
+            val categories = awaitItem().filter { it.category == "Social" }
+            assertEquals(2, categories.size)
+            assertTrue(categories.any { it.packageName == "com.lu4p.app1" })
+            assertTrue(categories.any { it.packageName == "com.lu4p.app3" })
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -231,12 +231,12 @@ class AppDaoTest {
         dao.setAppCategory(AppCategoryEntity("com.lu4p.app1", "0", "Social"))
         dao.setAppCategory(AppCategoryEntity("com.lu4p.app1", "10", "Productivity"))
 
-        assertEquals("Social", dao.getAppCategory("com.lu4p.app1", "0"))
-        assertEquals("Productivity", dao.getAppCategory("com.lu4p.app1", "10"))
+        assertEquals("Social", dao.getAppCategory("com.lu4p.app1", "0", ""))
+        assertEquals("Productivity", dao.getAppCategory("com.lu4p.app1", "10", ""))
 
-        dao.removeAppCategory("com.lu4p.app1", "10")
+        dao.removeAppCategory("com.lu4p.app1", "10", "")
 
-        assertEquals("Social", dao.getAppCategory("com.lu4p.app1", "0"))
-        assertNull(dao.getAppCategory("com.lu4p.app1", "10"))
+        assertEquals("Social", dao.getAppCategory("com.lu4p.app1", "0", ""))
+        assertNull(dao.getAppCategory("com.lu4p.app1", "10", ""))
     }
 }

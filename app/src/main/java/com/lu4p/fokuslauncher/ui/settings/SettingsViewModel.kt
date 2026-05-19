@@ -16,6 +16,7 @@ import com.lu4p.fokuslauncher.data.model.HomeAlignment
 import com.lu4p.fokuslauncher.data.model.TemperatureUnit
 import com.lu4p.fokuslauncher.data.model.ReservedCategoryNames
 import com.lu4p.fokuslauncher.data.model.appMetadataKey
+import com.lu4p.fokuslauncher.data.model.metadataSettingsStableKey
 import com.lu4p.fokuslauncher.data.model.appProfileKey
 import com.lu4p.fokuslauncher.data.font.SystemFontFamiliesProvider
 import com.lu4p.fokuslauncher.data.model.LauncherFontScale
@@ -116,16 +117,24 @@ data class SettingsUiState(
 data class HiddenAppInfo(
         val packageName: String,
         val profileKey: String,
+        val launcherShortcutId: String,
         val label: String,
-        val profileLabel: String?
-)
+        val profileLabel: String?,
+) {
+    val stableKey: String
+        get() = metadataSettingsStableKey(packageName, profileKey, launcherShortcutId)
+}
 
 data class RenamedAppInfo(
         val packageName: String,
         val profileKey: String,
+        val launcherShortcutId: String,
         val customName: String,
-        val profileLabel: String?
-)
+        val profileLabel: String?,
+) {
+    val stableKey: String
+        get() = metadataSettingsStableKey(packageName, profileKey, launcherShortcutId)
+}
 
 @HiltViewModel
 class SettingsViewModel
@@ -354,15 +363,11 @@ constructor(
                         }
                 val metadataLookupApps = installedApps + privateApps
                 val allShortcutActions = appRepository.getAllShortcutActionsOnBackground()
-                val hiddenLabels =
-                        metadataLookupApps.associate {
-                            appMetadataKey(it.packageName, it.userHandle) to it
-                        }
                 SettingsUiState(
                         hiddenApps =
                                 hiddenInfosForSettings(
                                         left.hiddenApps,
-                                        hiddenLabels,
+                                        metadataLookupApps,
                                         privateSpaceUnlocked,
                                         privateProfileKey,
                                         profileDisplayNameOverrides,
@@ -370,7 +375,7 @@ constructor(
                         renamedApps =
                                 renamedInfosForSettings(
                                         left.renamedApps,
-                                        hiddenLabels,
+                                        metadataLookupApps,
                                         privateSpaceUnlocked,
                                         privateProfileKey,
                                         profileDisplayNameOverrides,
@@ -491,19 +496,31 @@ constructor(
 
     private inline fun <T, R> mapEntitiesForSettings(
             entities: List<T>,
-            hiddenLabels: Map<String, AppInfo>,
+            installedApps: List<AppInfo>,
             privateSpaceUnlocked: Boolean,
             privateProfileKey: String?,
             profileDisplayNameOverrides: Map<String, String>,
             packageName: (T) -> String,
             profileKey: (T) -> String,
+            launcherShortcutId: (T) -> String,
             transform: (T, AppInfo?, String?) -> R,
     ): List<R> =
             entities.mapNotNull { entity ->
                 val pkg = packageName(entity)
                 val prof = profileKey(entity)
-                val key = appMetadataKey(pkg, prof)
-                val matchingApp = hiddenLabels[key]
+                val shortcutId = launcherShortcutId(entity)
+                val matchingApp =
+                        installedApps.find { app ->
+                            app.packageName == pkg &&
+                                    appProfileKey(app.userHandle) == prof &&
+                                    when (shortcutId) {
+                                        com.lu4p.fokuslauncher.data.model.HOST_APP_METADATA_SENTINEL ->
+                                                app.launcherShortcutId == null
+                                        com.lu4p.fokuslauncher.data.model.LEGACY_PACKAGE_WIDE_METADATA ->
+                                                true
+                                        else -> app.launcherShortcutId == shortcutId
+                                    }
+                        }
                 if (!privateSpaceUnlocked && prof == privateProfileKey) null
                 else
                         transform(
@@ -520,23 +537,25 @@ constructor(
 
     private fun hiddenInfosForSettings(
             hiddenApps: List<HiddenAppEntity>,
-            hiddenLabels: Map<String, AppInfo>,
+            installedApps: List<AppInfo>,
             privateSpaceUnlocked: Boolean,
             privateProfileKey: String?,
             profileDisplayNameOverrides: Map<String, String>,
     ): List<HiddenAppInfo> =
             mapEntitiesForSettings(
                     hiddenApps,
-                    hiddenLabels,
+                    installedApps,
                     privateSpaceUnlocked,
                     privateProfileKey,
                     profileDisplayNameOverrides,
                     packageName = { it.packageName },
                     profileKey = { it.profileKey },
+                    launcherShortcutId = { it.launcherShortcutId },
             ) { hiddenApp, matchingApp, profileLabel ->
                 HiddenAppInfo(
                         packageName = hiddenApp.packageName,
                         profileKey = hiddenApp.profileKey,
+                        launcherShortcutId = hiddenApp.launcherShortcutId,
                         label = matchingApp?.label ?: hiddenApp.packageName,
                         profileLabel = profileLabel,
                 )
@@ -551,23 +570,25 @@ constructor(
 
     private fun renamedInfosForSettings(
             renamedApps: List<RenamedAppEntity>,
-            hiddenLabels: Map<String, AppInfo>,
+            installedApps: List<AppInfo>,
             privateSpaceUnlocked: Boolean,
             privateProfileKey: String?,
             profileDisplayNameOverrides: Map<String, String>,
     ): List<RenamedAppInfo> =
             mapEntitiesForSettings(
                     renamedApps,
-                    hiddenLabels,
+                    installedApps,
                     privateSpaceUnlocked,
                     privateProfileKey,
                     profileDisplayNameOverrides,
                     packageName = { it.packageName },
                     profileKey = { it.profileKey },
+                    launcherShortcutId = { it.launcherShortcutId },
             ) { renamedApp, matchingApp, profileLabel ->
                 RenamedAppInfo(
                         packageName = renamedApp.packageName,
                         profileKey = renamedApp.profileKey,
+                        launcherShortcutId = renamedApp.launcherShortcutId,
                         customName = renamedApp.customName,
                         profileLabel = profileLabel,
                 )
@@ -613,14 +634,18 @@ constructor(
 
     // --- Hidden Apps ---
 
-    fun unhideApp(packageName: String, profileKey: String) {
-        viewModelScope.launch { appRepository.unhideApp(packageName, profileKey) }
+    fun unhideApp(packageName: String, profileKey: String, launcherShortcutId: String) {
+        viewModelScope.launch {
+            appRepository.unhideApp(packageName, profileKey, launcherShortcutId)
+        }
     }
 
     // --- Renamed Apps ---
 
-    fun removeRename(packageName: String, profileKey: String) {
-        viewModelScope.launch { appRepository.removeRename(packageName, profileKey) }
+    fun removeRename(packageName: String, profileKey: String, launcherShortcutId: String) {
+        viewModelScope.launch {
+            appRepository.removeRename(packageName, profileKey, launcherShortcutId)
+        }
     }
 
     fun addCategoryDefinition(name: String) {

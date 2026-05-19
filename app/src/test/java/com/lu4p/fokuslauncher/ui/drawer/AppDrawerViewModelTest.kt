@@ -16,7 +16,8 @@ import com.lu4p.fokuslauncher.data.model.DrawerAppSortMode
 import com.lu4p.fokuslauncher.data.model.FavoriteApp
 import com.lu4p.fokuslauncher.data.model.ReservedCategoryNames
 import com.lu4p.fokuslauncher.data.model.ShortcutTarget
-import com.lu4p.fokuslauncher.data.model.appMetadataKey
+import com.lu4p.fokuslauncher.data.model.HOST_APP_METADATA_SENTINEL
+import com.lu4p.fokuslauncher.data.model.favoriteAppStableKey
 import com.lu4p.fokuslauncher.data.model.appProfileKey
 import com.lu4p.fokuslauncher.data.repository.AppRepository
 import com.lu4p.fokuslauncher.data.repository.RemovedApp
@@ -665,7 +666,36 @@ class AppDrawerViewModelTest {
         val app = testApps[0]
         viewModel.hideApp(app)
 
-        coVerify { appRepository.hideApp(app.packageName, appProfileKey(app.userHandle)) }
+        coVerify { appRepository.hideApp(app) }
+    }
+
+    @Test
+    fun `removeLauncherShortcut calls repository with shortcut id`() {
+        val app =
+                AppInfo(
+                        packageName = "org.mozilla.firefox",
+                        label = "Twitter",
+                        icon = null,
+                        launcherShortcutId = "pwa-twitter",
+                )
+        viewModel.removeLauncherShortcut(app)
+
+        coVerify {
+            appRepository.unpinLauncherShortcut(
+                    packageName = "org.mozilla.firefox",
+                    shortcutId = "pwa-twitter",
+                    userHandle = null,
+            )
+        }
+    }
+
+    @Test
+    fun `removeLauncherShortcut no-op without shortcut id`() {
+        viewModel.removeLauncherShortcut(testApps[0])
+
+        coVerify(exactly = 0) {
+            appRepository.unpinLauncherShortcut(any(), any(), any())
+        }
     }
 
     @Test
@@ -698,10 +728,120 @@ class AppDrawerViewModelTest {
     }
 
     @Test
+    fun `hide PWA hides only that shortcut row`() {
+        val browser = AppInfo("org.mozilla.firefox", "Firefox", null)
+        val twitter =
+                AppInfo(
+                        packageName = "org.mozilla.firefox",
+                        label = "Twitter",
+                        icon = null,
+                        launcherShortcutId = "pwa-twitter",
+                )
+        val reddit =
+                AppInfo(
+                        packageName = "org.mozilla.firefox",
+                        label = "Reddit",
+                        icon = null,
+                        launcherShortcutId = "pwa-reddit",
+                )
+        installedApps = testApps + listOf(browser, twitter, reddit)
+        viewModel.refresh()
+        awaitState("browser and PWAs loaded") { state ->
+            state.allApps.count { it.packageName == "org.mozilla.firefox" } == 3
+        }
+
+        hiddenFlow.value =
+                listOf(
+                        HiddenAppEntity(
+                                packageName = "org.mozilla.firefox",
+                                profileKey = "0",
+                                launcherShortcutId = "pwa-twitter",
+                        )
+                )
+        awaitState("only Twitter PWA hidden") { state ->
+            val firefoxApps = state.allApps.filter { it.packageName == "org.mozilla.firefox" }
+            firefoxApps.any { it.launcherShortcutId == null } &&
+                    firefoxApps.any { it.launcherShortcutId == "pwa-reddit" } &&
+                    firefoxApps.none { it.launcherShortcutId == "pwa-twitter" }
+        }
+    }
+
+    @Test
+    fun `hide browser host row hides only host not PWAs`() {
+        val browser = AppInfo("org.mozilla.firefox", "Firefox", null)
+        val twitter =
+                AppInfo(
+                        packageName = "org.mozilla.firefox",
+                        label = "Twitter",
+                        icon = null,
+                        launcherShortcutId = "pwa-twitter",
+                )
+        installedApps = testApps + listOf(browser, twitter)
+        viewModel.refresh()
+        awaitState("browser and PWA loaded") { state ->
+            state.allApps.count { it.packageName == "org.mozilla.firefox" } == 2
+        }
+
+        hiddenFlow.value =
+                listOf(
+                        HiddenAppEntity(
+                                packageName = "org.mozilla.firefox",
+                                profileKey = "0",
+                                launcherShortcutId = HOST_APP_METADATA_SENTINEL,
+                        )
+                )
+        awaitState("only browser host hidden") { state ->
+            val firefoxApps = state.allApps.filter { it.packageName == "org.mozilla.firefox" }
+            firefoxApps.none { it.launcherShortcutId == null } &&
+                    firefoxApps.any { it.launcherShortcutId == "pwa-twitter" }
+        }
+    }
+
+    @Test
+    fun `rename PWA does not rename browser or sibling PWAs`() {
+        val browser = AppInfo("org.mozilla.firefox", "Firefox", null)
+        val twitter =
+                AppInfo(
+                        packageName = "org.mozilla.firefox",
+                        label = "Twitter",
+                        icon = null,
+                        launcherShortcutId = "pwa-twitter",
+                )
+        val reddit =
+                AppInfo(
+                        packageName = "org.mozilla.firefox",
+                        label = "Reddit",
+                        icon = null,
+                        launcherShortcutId = "pwa-reddit",
+                )
+        installedApps = testApps + listOf(browser, twitter, reddit)
+        viewModel.refresh()
+        awaitState("browser and PWAs loaded") { state ->
+            state.allApps.count { it.packageName == "org.mozilla.firefox" } == 3
+        }
+
+        renamedFlow.value =
+                listOf(
+                        RenamedAppEntity(
+                                packageName = "org.mozilla.firefox",
+                                profileKey = "0",
+                                customName = "Bird Site",
+                                launcherShortcutId = "pwa-twitter",
+                        )
+                )
+        awaitState("only Twitter renamed") { state ->
+            val firefoxApps = state.allApps.filter { it.packageName == "org.mozilla.firefox" }
+            firefoxApps.single { it.launcherShortcutId == null }.label == "Firefox" &&
+                    firefoxApps.single { it.launcherShortcutId == "pwa-reddit" }.label == "Reddit" &&
+                    firefoxApps.single { it.launcherShortcutId == "pwa-twitter" }.label == "Bird Site"
+        }
+    }
+
+    @Test
     fun `renameApp calls repository`() {
         viewModel.renameApp(testApps[0], "My Atom")
 
-        coVerify { appRepository.renameApp("com.lu4p.atom", "0", "My Atom") }
+        coVerify { appRepository.renameApp(testApps[0], "My Atom") }
     }
 
     @Test
@@ -714,8 +854,12 @@ class AppDrawerViewModelTest {
 
         val state = viewModel.uiState.value
 
-        assertTrue(appMetadataKey("com.lu4p.chrome", "0") in state.favoriteAppKeys)
-        assertTrue(appMetadataKey("com.lu4p.chrome", "42") in state.favoriteAppKeys)
+        assertTrue(favoriteAppStableKey(
+                FavoriteApp(label = "Chrome", packageName = "com.lu4p.chrome", profileKey = "0")
+        ) in state.favoriteAppKeys)
+        assertTrue(favoriteAppStableKey(
+                FavoriteApp(label = "Chrome Work", packageName = "com.lu4p.chrome", profileKey = "42")
+        ) in state.favoriteAppKeys)
         assertEquals(2, state.favoriteAppKeys.size)
     }
 
