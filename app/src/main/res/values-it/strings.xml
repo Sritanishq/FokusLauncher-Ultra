@@ -257,7 +257,7 @@
     <string name="settings_matrix_title">Partecipa alla discussione</string>
     <string name="settings_matrix_subtitle">Ottieni assistenza e condividi feedback</string>
     <string name="settings_swipe_left">Scorrimento a sinistra</string>
-    <string name="settings_swipe_right">Scorrimenti a destra</string>
+    <string name="settings_swipe_right">Scorrimento a destra</string>
     <string name="settings_glow_subtitle">Alone morbido su testi e icone</string>
     <string name="visual_style_classic">Classico</string>
     <string name="visual_style_neon_magenta">Violetto Cosmico</string>
@@ -331,7 +331,7 @@
     <string name="settings_dot_search_add_url_template_help">Digita `.x query` per aprire un URL o un deep link con la query inserita.</string>
     <string name="settings_dot_search_pick_alias_search_app">Scegli l\'app di ricerca per questa scorciatoia</string>
     <string name="settings_dot_search_shortcut_mode_label">Apre immediatamente</string>
-    <string name="settings_dot_search_search_mode_label">Destinazione della ricerca</string>
+    <string name="settings_dot_search_search_mode_label">Deostinazione della ricerca</string>
     <string name="settings_drawer_scroll_to_top_auto_keyboard_subtitle">Apri automaticamente tastiera e ricerca quando scorri fino in cima alla lista delle app</string>
     <string name="settings_drawer_scroll_to_top_auto_keyboard">Tastiera scorrendo in cima</string>
 </resources>
