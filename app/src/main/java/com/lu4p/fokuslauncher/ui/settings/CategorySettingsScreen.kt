@@ -53,7 +53,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.lu4p.fokuslauncher.R
 import com.lu4p.fokuslauncher.data.model.AddCategoryResult
 import com.lu4p.fokuslauncher.data.model.ReservedCategoryNames
-import com.lu4p.fokuslauncher.data.model.appProfileKey
+import com.lu4p.fokuslauncher.data.model.appListStableKey
 import com.lu4p.fokuslauncher.data.model.categoryAddFieldFailure
 import com.lu4p.fokuslauncher.ui.drawer.groupAppsIntoProfileSections
 import com.lu4p.fokuslauncher.ui.drawer.profileGroupedAppItems
@@ -366,14 +366,14 @@ fun CategoryAppsScreen(
                 onNavigateBack = onNavigateBack,
                 onDone = onNavigateBack,
         ) { searchQuery, listState ->
-            val checkedPackages = remember(uiState.allApps, category) {
+            val checkedAppKeys = remember(uiState.allApps, category) {
                 uiState.allApps
                         .filter { app -> app.category.equals(category, ignoreCase = true) }
-                        .map { it.packageName }
+                        .map(::appListStableKey)
                         .toSet()
             }
-            val checkedApps = remember(uiState.allApps, checkedPackages) {
-                uiState.allApps.filter { it.packageName in checkedPackages }
+            val checkedApps = remember(uiState.allApps, checkedAppKeys) {
+                uiState.allApps.filter { appListStableKey(it) in checkedAppKeys }
             }
             val checkedSections = remember(checkedApps, uiState.profileDisplayNameOverrides, context) {
                 groupAppsIntoProfileSections(
@@ -383,8 +383,8 @@ fun CategoryAppsScreen(
                         uiState.profileDisplayNameOverrides,
                 )
             }
-            val uncheckedApps = remember(uiState.allApps, checkedPackages, searchQuery) {
-                uiState.allApps.filter { it.packageName !in checkedPackages }
+            val uncheckedApps = remember(uiState.allApps, checkedAppKeys, searchQuery) {
+                uiState.allApps.filter { appListStableKey(it) !in checkedAppKeys }
                         .let { apps ->
                             if (searchQuery.isBlank()) apps
                             else apps.filter { it.label.containsNormalizedSearch(searchQuery) }
@@ -423,13 +423,7 @@ fun CategoryAppsScreen(
                             label = app.label,
                             checked = true,
                             secondary = categoryChipDisplayLabel(context, category),
-                            onToggle = {
-                                viewModel.setAppCategory(
-                                        app.packageName,
-                                        appProfileKey(app.userHandle),
-                                        ""
-                                )
-                            }
+                            onToggle = { viewModel.setAppCategory(app, "") }
                     )
                 }
                 item {
@@ -454,13 +448,7 @@ fun CategoryAppsScreen(
                                                 stringResource(R.string.category_no_category)
                                             }
                                             .let { categoryChipDisplayLabel(context, it) },
-                            onToggle = {
-                                viewModel.setAppCategory(
-                                        app.packageName,
-                                        appProfileKey(app.userHandle),
-                                        category
-                                )
-                            }
+                            onToggle = { viewModel.setAppCategory(app, category) }
                     )
                 }
             }

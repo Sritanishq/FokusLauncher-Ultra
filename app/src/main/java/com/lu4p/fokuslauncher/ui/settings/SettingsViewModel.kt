@@ -3,6 +3,7 @@ package com.lu4p.fokuslauncher.ui.settings
 import android.os.Process
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lu4p.fokuslauncher.data.database.entity.AppCategoryEntity
 import com.lu4p.fokuslauncher.data.database.entity.HiddenAppEntity
 import com.lu4p.fokuslauncher.data.database.entity.RenamedAppEntity
 import com.lu4p.fokuslauncher.data.local.PreferencesManager
@@ -15,9 +16,9 @@ import com.lu4p.fokuslauncher.data.model.HomeDateFormatStyle
 import com.lu4p.fokuslauncher.data.model.HomeAlignment
 import com.lu4p.fokuslauncher.data.model.TemperatureUnit
 import com.lu4p.fokuslauncher.data.model.ReservedCategoryNames
-import com.lu4p.fokuslauncher.data.model.appMetadataKey
 import com.lu4p.fokuslauncher.data.model.metadataSettingsStableKey
 import com.lu4p.fokuslauncher.data.model.appProfileKey
+import com.lu4p.fokuslauncher.data.model.overlayCategory
 import com.lu4p.fokuslauncher.data.font.CustomFontImportFailure
 import com.lu4p.fokuslauncher.data.font.CustomFontImportResult
 import com.lu4p.fokuslauncher.data.font.CustomFontStore
@@ -217,10 +218,7 @@ constructor(
                                 favorites = base.favorites,
                                 rightSideShortcuts = base.rightSideShortcuts,
                                 swipeLeft = base.swipeLeft,
-                                appCategories =
-                                        categories.associate {
-                                            appMetadataKey(it.packageName, it.profileKey) to it.category
-                                        },
+                                categoryEntities = categories,
                                 categoryDefinitions = definitions.map { it.name },
                         )
                     }
@@ -360,18 +358,11 @@ constructor(
                                 .getPrivateSpaceProfile()
                                 ?.takeIf { it != Process.myUserHandle() }
                                 ?.let(::appProfileKey)
-                val categoryMap = left.appCategories
+                val categoryEntities = left.categoryEntities
                 val installedApps =
                         appRepository.getInstalledAppsOnBackground().map { app ->
                             app.copy(
-                                    category =
-                                            categoryMap[
-                                                            appMetadataKey(
-                                                                    app.packageName,
-                                                                    app.userHandle,
-                                                            )
-                                                    ]
-                                                    ?: app.category,
+                                    category = overlayCategory(app, categoryEntities) ?: app.category,
                             )
                         }
                 val privateApps =
@@ -399,7 +390,15 @@ constructor(
                                         privateProfileKey,
                                         profileDisplayNameOverrides,
                                 ),
-                        appCategories = left.appCategories,
+                        appCategories =
+                                categoryEntities.associate {
+                                    metadataSettingsStableKey(
+                                            it.packageName,
+                                            it.profileKey,
+                                            it.launcherShortcutId,
+                                    ) to
+                                            it.category
+                                },
                         categoryDefinitions = left.categoryDefinitions,
                         favorites = left.favorites,
                         rightSideShortcuts = left.rightSideShortcuts,
@@ -471,7 +470,7 @@ constructor(
             val favorites: List<FavoriteApp>,
             val rightSideShortcuts: List<HomeShortcut>,
             val swipeLeft: ShortcutTarget?,
-            val appCategories: Map<String, String>,
+            val categoryEntities: List<AppCategoryEntity>,
             val categoryDefinitions: List<String>,
     )
 
@@ -686,8 +685,8 @@ constructor(
         viewModelScope.launch { preferencesManager.setProfileDisplayName(profileKey, displayName) }
     }
 
-    fun setAppCategory(packageName: String, profileKey: String, category: String) {
-        viewModelScope.launch { appRepository.setAppCategory(packageName, profileKey, category) }
+    fun setAppCategory(app: AppInfo, category: String) {
+        viewModelScope.launch { appRepository.setAppCategory(app, category) }
     }
 
     fun reorderCategories(categories: List<String>) {
