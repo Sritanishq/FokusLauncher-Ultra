@@ -8,18 +8,23 @@ import java.time.OffsetDateTime
 import java.time.ZoneId
 
 /**
- * Builds a plain-text diagnostic file (device / app metadata + this process's logcat buffer)
- * for user-initiated export from Settings.
+ * Builds a plain-text diagnostic file (device / app metadata + logcat) for user-initiated export
+ * from Settings.
+ *
+ * Captures the **crash** log buffer and the app's UID-scoped **main** buffer without `--pid`, so
+ * lines from earlier process instances (e.g. right before a crash) remain when the user reopens
+ * the app and exports.
  */
 object AppDiagnosticLogExporter {
 
-    private const val LOG_LINES = "12000"
+    private const val MAIN_LOG_MAX_LINES = "20000"
+    private const val CRASH_LOG_MAX_LINES = "2000"
 
     fun writeExportFile(context: Context): File {
         val dir = File(context.cacheDir, "log_export").apply { mkdirs() }
         val outFile = File(dir, "fokus-launcher-diagnostic.txt")
         val header = buildHeader(context)
-        val logs = captureLogcatForCurrentProcess()
+        val logs = captureDiagnosticLogs()
         outFile.writeText(header + logs)
         return outFile
     }
@@ -38,39 +43,76 @@ object AppDiagnosticLogExporter {
             appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE})")
             appendLine("SDK: ${Build.VERSION.SDK_INT} (${Build.VERSION.RELEASE})")
             appendLine("ABI: ${Build.SUPPORTED_ABIS.joinToString()}")
-            appendLine("Process ID: ${android.os.Process.myPid()}")
+            appendLine("Process ID (this export): ${android.os.Process.myPid()}")
+            appendLine(
+                    "Note: Log sections include prior app sessions (other PIDs) when still in the " +
+                            "system logcat buffer."
+            )
             appendLine("=".repeat(60))
             appendLine()
         }
     }
 
-    private fun captureLogcatForCurrentProcess(): String {
-        val pid = android.os.Process.myPid().toString()
-        return runCatching {
-            val process =
-                    ProcessBuilder(
-                                    "logcat",
-                                    "-d",
-                                    "-v",
-                                    "threadtime",
-                                    "--pid",
-                                    pid,
-                                    "-t",
-                                    LOG_LINES
+    private fun captureDiagnosticLogs(): String =
+            buildString {
+                appendSection("CRASH LOG BUFFER") {
+                    append(
+                            captureLogcat(
+                                    listOf(
+                                            "logcat",
+                                            "-d",
+                                            "-b",
+                                            "crash",
+                                            "-v",
+                                            "threadtime",
+                                            "-t",
+                                            CRASH_LOG_MAX_LINES,
+                                    ),
+                                    emptyMessage = "(No lines in crash buffer.)\n",
                             )
-                            .redirectErrorStream(true)
-                            .start()
-            val text =
-                    process.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            val exit = process.waitFor()
-            if (exit != 0 && text.isBlank()) {
-                "(logcat exited with code $exit and no output)\n"
-            } else {
-                text.ifBlank { "(No log lines returned for this process.)\n" }
-            }
-        }
-                .getOrElse { e ->
-                    "(Log capture failed: ${e.javaClass.simpleName}: ${e.message})\n"
+                    )
                 }
+                appendSection("APP LOG (all recent sessions for this app)") {
+                    append(
+                            captureLogcat(
+                                    listOf(
+                                            "logcat",
+                                            "-d",
+                                            "-v",
+                                            "threadtime",
+                                            "-t",
+                                            MAIN_LOG_MAX_LINES,
+                                    ),
+                                    emptyMessage = "(No log lines returned for this app.)\n",
+                            )
+                    )
+                }
+            }
+
+    private fun StringBuilder.appendSection(title: String, block: StringBuilder.() -> Unit) {
+        appendLine("-".repeat(60))
+        appendLine(title)
+        appendLine("-".repeat(60))
+        block()
+        appendLine()
     }
+
+    private fun captureLogcat(args: List<String>, emptyMessage: String): String =
+            runCatching {
+                        val process = ProcessBuilder(args).redirectErrorStream(true).start()
+                        val text =
+                                process.inputStream.bufferedReader(Charsets.UTF_8).use {
+                                    it.readText()
+                                }
+                        val exit = process.waitFor()
+                        when {
+                            exit != 0 && text.isBlank() ->
+                                    "(logcat exited with code $exit and no output)\n"
+                            text.isBlank() -> emptyMessage
+                            else -> if (text.endsWith('\n')) text else "$text\n"
+                        }
+                    }
+                    .getOrElse { e ->
+                        "(Log capture failed: ${e.javaClass.simpleName}: ${e.message})\n"
+                    }
 }
