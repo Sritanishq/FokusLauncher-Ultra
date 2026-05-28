@@ -328,7 +328,6 @@ fun SettingsScreen(
                             )
                     )
                 },
-                onClearCustomFont = viewModel::clearCustomFont,
                 resolveCustomFontFile = viewModel::resolveCustomFontFile,
                 onSetBlackWallpaper = {
                     viewModel.setBlackWallpaper()
@@ -373,7 +372,6 @@ private fun SettingsScreenContent(
         resources: Resources,
         onPickWallpaper: () -> Unit,
         onImportCustomFont: () -> Unit,
-        onClearCustomFont: () -> Unit,
         resolveCustomFontFile: (String) -> java.io.File?,
         onSetBlackWallpaper: () -> Unit,
         onOpenHomeWidgetsSettings: () -> Unit,
@@ -483,15 +481,6 @@ private fun SettingsScreenContent(
                     verticalPadding = 14.dp,
                     onClick = onImportCustomFont,
             )
-        }
-        if (uiState.hasCustomFontFile) {
-            item {
-                SettingsRow(
-                        label = stringResource(R.string.settings_font_clear_custom),
-                        verticalPadding = 14.dp,
-                        onClick = onClearCustomFont,
-                )
-            }
         }
         item {
             LauncherFontSizeSlider(
@@ -1104,12 +1093,25 @@ fun DeviceControlSettingsScreen(
  * Endonym: name of the language written in that language (e.g. English, Polski), independent of
  * app UI locale.
  */
-private fun languageAutonym(localeTag: String): String {
+private fun languageAutonym(localeTag: String, allTags: List<String>): String {
     val locale = Locale.forLanguageTag(localeTag)
-    val raw = locale.getDisplayLanguage(locale).trim()
+    val sameLanguageTags =
+            allTags.filter { Locale.forLanguageTag(it).language == locale.language }
+    val displayLocale =
+            when {
+                sameLanguageTags.size <= 1 -> locale
+                localeTag == "pt" -> Locale("pt", "PT")
+                else -> locale
+            }
+    val raw =
+            if (sameLanguageTags.size > 1) {
+                displayLocale.getDisplayName(displayLocale).trim()
+            } else {
+                locale.getDisplayLanguage(locale).trim()
+            }
     if (raw.isBlank()) return localeTag
     return raw.replaceFirstChar { ch ->
-        if (ch.isLowerCase()) ch.titlecase(locale) else ch.toString()
+        if (ch.isLowerCase()) ch.titlecase(displayLocale) else ch.toString()
     }
 }
 
@@ -1187,17 +1189,22 @@ private fun AppLanguageDropdown(
     val supportedLocaleTags =
             remember {
                 listOf(
+                        "ca",
                         "da",
                         "de",
                         "en",
                         "es",
                         "eu",
                         "fi",
+                        "fr",
                         "in",
+                        "it",
                         "pl",
+                        "pt",
                         "pt-BR",
                         "ro",
                         "ru",
+                        "ta",
                         "tr",
                         "uk",
                         "zh-CN",
@@ -1209,7 +1216,7 @@ private fun AppLanguageDropdown(
                 buildList {
                     add("" to systemDefaultLabel)
                     supportedLocaleTags
-                            .map { tag -> tag to languageAutonym(tag) }
+                            .map { tag -> tag to languageAutonym(tag, supportedLocaleTags) }
                             .sortedWith { a, b -> collator.compare(a.second, b.second) }
                             .forEach { add(it) }
                 }
@@ -1218,7 +1225,11 @@ private fun AppLanguageDropdown(
     val onLanguageExpandedChange = rememberBooleanChangeWithSystemSound { expanded = it }
     val selectedDisplayText =
             options.find { (tag, _) -> tag == currentTag }?.second
-                    ?: if (currentTag.isBlank()) systemDefaultLabel else languageAutonym(currentTag)
+                    ?: if (currentTag.isBlank()) {
+                        systemDefaultLabel
+                    } else {
+                        languageAutonym(currentTag, supportedLocaleTags)
+                    }
     SettingsDropdown(
             title = stringResource(R.string.settings_language_label),
             options = options,

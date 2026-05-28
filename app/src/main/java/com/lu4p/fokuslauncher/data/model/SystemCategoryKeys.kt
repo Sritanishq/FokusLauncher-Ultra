@@ -19,17 +19,22 @@ object SystemCategoryKeys {
 
     private val supportedLocaleTags =
             listOf(
+                    "ca",
                     "da",
                     "de",
                     "en",
                     "es",
                     "eu",
                     "fi",
+                    "fr",
                     "in",
+                    "it",
                     "pl",
+                    "pt",
                     "pt-BR",
                     "ro",
                     "ru",
+                    "ta",
                     "tr",
                     "uk",
                     "zh-CN",
