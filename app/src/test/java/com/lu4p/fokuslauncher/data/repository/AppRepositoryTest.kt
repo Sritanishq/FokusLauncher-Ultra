@@ -132,6 +132,47 @@ class AppRepositoryTest {
     }
 
     @Test
+    fun `getInstalledApps retries when owner profile is empty but work profile has apps`() {
+        val workUser = mockk<UserHandle>(relaxed = true)
+        every { userManager.userProfiles } returns listOf(myUser, workUser)
+        every { privateSpaceManager.isPrivateSpaceProfile(workUser) } returns false
+        var ownerCalls = 0
+        every { launcherApps.getActivityList(null, myUser) } answers {
+            ownerCalls++
+            if (ownerCalls < 2) {
+                emptyList()
+            } else {
+                listOf(createMockLauncherActivity("com.lu4p.app1", "App 1"))
+            }
+        }
+        every {
+            launcherApps.getActivityList(null, workUser)
+        } returns listOf(createMockLauncherActivity("com.work.slack", "Slack"))
+
+        val result = repository.getInstalledApps()
+
+        assertTrue(result.any { it.userHandle == null })
+        assertTrue(result.any { it.userHandle == workUser })
+        assertTrue(ownerCalls >= 2)
+    }
+
+    @Test
+    fun `getInstalledApps does not cache work-only snapshot when owner stays empty`() {
+        val workUser = mockk<UserHandle>(relaxed = true)
+        every { userManager.userProfiles } returns listOf(myUser, workUser)
+        every { privateSpaceManager.isPrivateSpaceProfile(workUser) } returns false
+        every { launcherApps.getActivityList(null, myUser) } returns emptyList()
+        every {
+            launcherApps.getActivityList(null, workUser)
+        } returns listOf(createMockLauncherActivity("com.work.slack", "Slack"))
+
+        repository.getInstalledApps()
+        repository.getInstalledApps()
+
+        verify(atLeast = 2) { launcherApps.getActivityList(null, myUser) }
+    }
+
+    @Test
     fun `getInstalledApps retries empty LauncherApps snapshot before giving up`() {
         var calls = 0
         every { launcherApps.getActivityList(null, myUser) } answers {

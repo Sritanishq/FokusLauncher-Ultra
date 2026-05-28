@@ -156,8 +156,14 @@ constructor(
         }
 
         val apps = loadInstalledAppsMergedAcrossProfiles()
-        if (apps.isNotEmpty()) {
-            cachedApps = apps
+        when {
+            apps.isNotEmpty() && !isIncompleteOwnerProfileSnapshot(apps) -> cachedApps = apps
+            apps.isNotEmpty() ->
+                    Log.w(
+                            TAG,
+                            "not caching installed-apps snapshot (${mergedAppsSummary(apps)}); " +
+                                    "owner profile still missing from merged list",
+                    )
         }
         return apps
     }
@@ -227,16 +233,40 @@ constructor(
             return loadInstalledAppsLegacyQuery()
         }
 
+        val myUser = Process.myUserHandle()
         var result = mergeLauncherActivitiesAcrossProfiles(launcherApps, userManager)
-        if (result.isEmpty() && userManager.userProfiles.contains(Process.myUserHandle())) {
-            repeat(LOAD_EMPTY_RETRY_COUNT) {
+        val shouldRetryOwnerProfile =
+                userManager.userProfiles.contains(myUser) &&
+                        (result.isEmpty() || isIncompleteOwnerProfileSnapshot(result))
+        if (shouldRetryOwnerProfile) {
+            Log.w(
+                    TAG,
+                    "retrying LauncherApps load (${retryReason(result)}; " +
+                            "${mergedAppsSummary(result)}; " +
+                            "${profileLauncherAppsSummary(launcherApps, userManager, "before retry")})",
+            )
+            repeat(LOAD_EMPTY_RETRY_COUNT) { attempt ->
                 Thread.sleep(LOAD_EMPTY_RETRY_DELAY_MS)
                 result = mergeLauncherActivitiesAcrossProfiles(launcherApps, userManager)
-                if (result.isNotEmpty()) return@repeat
+                if (result.isNotEmpty() && !isIncompleteOwnerProfileSnapshot(result)) {
+                    Log.i(
+                            TAG,
+                            "LauncherApps load recovered on retry ${attempt + 1} " +
+                                    "(${mergedAppsSummary(result)})",
+                    )
+                    return@repeat
+                }
+                Log.w(
+                        TAG,
+                        "LauncherApps retry ${attempt + 1}/${LOAD_EMPTY_RETRY_COUNT} still " +
+                                "${retryReason(result)} (${mergedAppsSummary(result)})",
+                )
             }
         }
-        if (result.isEmpty()) {
-            logEmptyLauncherAppsLoad(launcherApps, userManager)
+        when {
+            result.isEmpty() -> logEmptyLauncherAppsLoad(launcherApps, userManager)
+            isIncompleteOwnerProfileSnapshot(result) ->
+                    logIncompleteOwnerProfileLoad(launcherApps, userManager, result)
         }
         return result
     }
@@ -331,7 +361,52 @@ constructor(
         return (primary + secondary + pinnedShortcuts).sortedBy { it.label.lowercase() }
     }
 
+    /**
+     * True when the owner profile is present on the device but missing from a non-empty snapshot
+     * while at least one secondary profile has apps (transient [LauncherApps] enumeration on
+     * Android 17+).
+     */
+    private fun isIncompleteOwnerProfileSnapshot(apps: List<AppInfo>): Boolean {
+        if (apps.isEmpty()) return false
+        val hasOwnerApps = apps.any { it.userHandle == null }
+        val hasSecondaryApps = apps.any { it.userHandle != null }
+        return !hasOwnerApps && hasSecondaryApps
+    }
+
     private fun logEmptyLauncherAppsLoad(launcherApps: LauncherApps, userManager: UserManager) {
+        Log.w(TAG, profileLauncherAppsSummary(launcherApps, userManager, "no installable apps"))
+    }
+
+    private fun logIncompleteOwnerProfileLoad(
+            launcherApps: LauncherApps,
+            userManager: UserManager,
+            merged: List<AppInfo>,
+    ) {
+        Log.w(
+                TAG,
+                profileLauncherAppsSummary(
+                        launcherApps,
+                        userManager,
+                        "owner profile missing from merged app list after retries; " +
+                                mergedAppsSummary(merged),
+                ),
+        )
+    }
+
+    private fun retryReason(apps: List<AppInfo>): String =
+            if (apps.isEmpty()) "empty merged list" else "owner profile missing from merged list"
+
+    private fun mergedAppsSummary(apps: List<AppInfo>): String {
+        val ownerCount = apps.count { it.userHandle == null }
+        val secondaryCount = apps.count { it.userHandle != null }
+        return "merged total=${apps.size} owner=$ownerCount secondary=$secondaryCount"
+    }
+
+    private fun profileLauncherAppsSummary(
+            launcherApps: LauncherApps,
+            userManager: UserManager,
+            reason: String,
+    ): String {
         val myUser = Process.myUserHandle()
         val profileSummary =
                 userManager.userProfiles.joinToString(separator = "; ") { user ->
@@ -354,10 +429,7 @@ constructor(
                     val privateSpace = privateSpaceManager.isPrivateSpaceProfile(user)
                     "user=${user.hashCode()} primary=${user == myUser} private=$privateSpace activities=$activityCount userType=$userType"
                 }
-        Log.w(
-                TAG,
-                "LauncherApps returned no installable apps (sdk=${Build.VERSION.SDK_INT}); profiles: $profileSummary",
-        )
+        return "LauncherApps $reason (sdk=${Build.VERSION.SDK_INT}); profiles: $profileSummary"
     }
 
     private data class RawLauncherEntry(

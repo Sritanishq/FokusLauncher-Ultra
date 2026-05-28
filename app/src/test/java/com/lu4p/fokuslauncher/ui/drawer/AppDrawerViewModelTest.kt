@@ -197,6 +197,45 @@ class AppDrawerViewModelTest {
     }
 
     @Test
+    fun `sidebar mode does not default selected category to Work`() {
+        val workUser = mockk<UserHandle>(relaxed = true)
+        installedApps =
+                testApps +
+                        AppInfo("com.work.slack", "Slack", null, userHandle = workUser)
+        installedAppsVersion.value += 1L
+        awaitState("work app in drawer") {
+            it.allApps.any { app -> app.userHandle == workUser }
+        }
+
+        drawerSidebarCategoriesFlow.value = true
+        awaitState("sidebar category default not Work") { state ->
+            state.useSidebarCategoryDrawer &&
+                    !state.selectedCategory.equals(ReservedCategoryNames.WORK, ignoreCase = true)
+        }
+    }
+
+    @Test
+    fun `transient work-only snapshot does not wipe personal apps from drawer`() {
+        val workUser = mockk<UserHandle>(relaxed = true)
+        val workOnly = listOf(AppInfo("com.work.slack", "Slack", null, userHandle = workUser))
+        var loadCount = 0
+        every { appRepository.getInstalledApps() } answers {
+            loadCount++
+            if (loadCount <= 2) workOnly else installedApps
+        }
+        val ownerCountBefore =
+                viewModel.uiState.value.allApps.count { it.userHandle == null }
+        assertTrue(ownerCountBefore > 0)
+        installedApps =
+                testApps + AppInfo("com.work.slack", "Slack", null, userHandle = workUser)
+        viewModel.refresh()
+        Thread.sleep(400)
+        assertTrue(
+                viewModel.uiState.value.allApps.count { it.userHandle == null } >= ownerCountBefore
+        )
+    }
+
+    @Test
     fun `transient empty installed apps recovers drawer after retry`() {
         var loadCount = 0
         every { appRepository.getInstalledApps() } answers {

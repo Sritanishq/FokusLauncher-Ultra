@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.UserHandle
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lu4p.fokuslauncher.data.local.PreferencesManager
@@ -721,22 +722,51 @@ constructor(
 
     private suspend fun loadInstalledAppsForDrawerRebuild(
             hadVisibleApps: Boolean,
+            hadOwnerProfileApps: Boolean,
     ): List<AppInfo> {
         var base = withContext(drawerComputationDispatcher) { appRepository.getInstalledApps() }
-        if (base.isEmpty() && hadVisibleApps) {
+        if (hadVisibleApps &&
+                        (base.isEmpty() || (hadOwnerProfileApps && isWorkOnlyOwnerMissingSnapshot(base)))
+        ) {
+            Log.w(
+                    DRAWER_LOAD_TAG,
+                    "drawer reload suspicious snapshot (empty=${base.isEmpty()}, " +
+                            "workOnly=${isWorkOnlyOwnerMissingSnapshot(base)}); invalidating cache",
+            )
             delay(EMPTY_INSTALLED_APPS_RETRY_DELAY_MS)
             appRepository.invalidateCache()
             base = withContext(drawerComputationDispatcher) { appRepository.getInstalledApps() }
+            if (hadOwnerProfileApps && isWorkOnlyOwnerMissingSnapshot(base)) {
+                Log.w(
+                        DRAWER_LOAD_TAG,
+                        "drawer reload still work-only after retry (secondary=${base.count { it.userHandle != null }}); " +
+                                "keeping previous app list",
+                )
+            }
         }
         return base
+    }
+
+    /** Owner-profile apps absent while secondary-profile apps are present. */
+    private fun isWorkOnlyOwnerMissingSnapshot(apps: List<AppInfo>): Boolean {
+        if (apps.isEmpty()) return false
+        return apps.none { it.userHandle == null } && apps.any { it.userHandle != null }
     }
 
     private suspend fun rebuildVisibleApps(metadata: DrawerMetadataSnapshot) {
         drawerListRebuildMutex.withLock {
             val stateSnapshot = _uiState.value
             val hadVisibleApps = stateSnapshot.hasVisibleDrawerApps()
-            val base = loadInstalledAppsForDrawerRebuild(hadVisibleApps)
+            val hadOwnerProfileApps = stateSnapshot.allApps.any { it.userHandle == null }
+            val base =
+                    loadInstalledAppsForDrawerRebuild(
+                            hadVisibleApps = hadVisibleApps,
+                            hadOwnerProfileApps = hadOwnerProfileApps,
+                    )
             if (base.isEmpty() && hadVisibleApps) {
+                return
+            }
+            if (hadOwnerProfileApps && isWorkOnlyOwnerMissingSnapshot(base)) {
                 return
             }
             val rawPrivateApps = rawPrivateSpaceAppsForRebuild(stateSnapshot)
@@ -1565,6 +1595,19 @@ constructor(
 
     private fun defaultCategory(categories: List<String>, skipAllAppsCategory: Boolean): String {
         if (!skipAllAppsCategory) return ReservedCategoryNames.ALL_APPS
+        categories
+                .firstOrNull { it.equals(ReservedCategoryNames.UNCATEGORIZED, ignoreCase = true) }
+                ?.let {
+                    return it
+                }
+        categories
+                .firstOrNull {
+                    !it.equals(ReservedCategoryNames.WORK, ignoreCase = true) &&
+                            !it.equals(ReservedCategoryNames.PRIVATE, ignoreCase = true)
+                }
+                ?.let {
+                    return it
+                }
         return categories.firstOrNull() ?: ReservedCategoryNames.ALL_APPS
     }
 
@@ -1737,5 +1780,6 @@ constructor(
 
     private companion object {
         private const val EMPTY_INSTALLED_APPS_RETRY_DELAY_MS = 200L
+        private const val DRAWER_LOAD_TAG = "FokusAppLoad"
     }
 }
