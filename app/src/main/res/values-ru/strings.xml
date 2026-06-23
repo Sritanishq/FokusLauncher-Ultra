@@ -60,9 +60,9 @@
     <string name="inferred_category_media">Медиа</string>
     <string name="home_weather_app_picker_title">Выбрать приложение погоды</string>
     <string name="home_alignment_title">Выравнивание на рабочем столе</string>
-    <string name="home_alignment_left">Слева</string>
-    <string name="home_alignment_center">Центр</string>
-    <string name="home_alignment_right">Справа</string>
+    <string name="home_alignment_left">Внизу слева</string>
+    <string name="home_alignment_center">Внизу центр</string>
+    <string name="home_alignment_right">Внизу справа</string>
     <string name="edit_home_title">Редактировать домашний экран</string>
     <string name="edit_shortcuts_section_all_actions">Все действия приложений</string>
     <string name="edit_home_section_on_home">Приложения на рабочем столе</string>
@@ -118,7 +118,7 @@
     <string name="settings_drawer_search_auto_launch_subtitle">Открывать автоматически единственный результат поиска.</string>
     <string name="settings_section_appearance">Внешний вид</string>
     <string name="settings_swipe_left">Свайп влево</string>
-    <string name="icon_cat_ui_actions">Действия UI</string>
+    <string name="icon_cat_ui_actions">UI действия</string>
     <string name="category_add_error_reserved_work">\"Работа\" — встроенное имя фильтра. Выберите другое имя.</string>
     <string name="settings_drawer_app_sort">Сортировка приложений</string>
     <string name="accessibility_lock_service_label">Управление устройством Fokus</string>
@@ -168,10 +168,10 @@
     <string name="settings_long_lock_duration">Длительность долгой блокировки</string>
     <string name="widget_page_shortcut_label">Страницы виджета</string>
     <plurals name="category_app_count">
-        <item quantity="one">приложение</item>
-        <item quantity="few">приложений</item>
-        <item quantity="many">приложений</item>
-        <item quantity="other">приложений</item>
+        <item quantity="one">%d приложение</item>
+        <item quantity="few">%d приложений</item>
+        <item quantity="many">%d приложений</item>
+        <item quantity="other">%d приложений</item>
     </plurals>
     <string name="add_widget">Добавить виджет</string>
     <string name="manage_widgets">Управлять виджетами</string>
@@ -249,9 +249,9 @@
     <string name="onboarding_skip">Пропустить</string>
     <string name="onboarding_swipe_change">Изменить</string>
     <string name="onboarding_welcome_title">Fokus Launcher</string>
-    <string name="onboarding_swipe_left">Свайп слева</string>
+    <string name="onboarding_swipe_left">Свайп влево</string>
     <string name="onboarding_swipe_not_set">Не задано</string>
-    <string name="onboarding_swipe_right">Свайп справа</string>
+    <string name="onboarding_swipe_right">Свайп вправо</string>
     <string name="onboarding_swipe_subtitle">Свайпните влево или вправо на домашнем экране, чтобы запускать любимые приложения</string>
     <string name="onboarding_swipe_title">Ярлыки по свайпу</string>
     <string name="onboarding_tip_longpress">Долгое нажатие на домашнем экране откроет настройки</string>
@@ -274,7 +274,7 @@
     </plurals>
     <string name="settings_font_label">Шрифт</string>
     <string name="settings_font_size_label">Размер шрифта</string>
-    <string name="widget_page">Страница виджетов</string>
+    <string name="widget_page">страница виджета</string>
     <plurals name="settings_categories_count">
         <item quantity="one">%d категория</item>
         <item quantity="few">%d категорий</item>
@@ -305,9 +305,22 @@
     <string name="settings_dot_search_add_search_target_help">Введите `.x запрос`, чтобы отправить запрос в приложение, которое поддерживает поиск.</string>
     <string name="settings_dot_search_add_shortcut_url">Шаблон URL</string>
     <string name="settings_dot_search_add_url_template_help">Введите `.x запрос`, чтобы открыть URL или глубокую ссылку с подставленным запросом.</string>
-    <string name="settings_dot_search_no_web_search_apps">Нет установленных приложений, предоставляющих веб-поиск или внутриприложенный поиск для своего пакета.</string>
+    <string name="settings_dot_search_no_web_search_apps">Нет установленных приложений, предоставляющих веб-поиск или поиск в приложениях для своего пакета.</string>
     <string name="settings_dot_search_url_template_for_alias">URL для .%1$s …</string>
     <string name="settings_dot_search_alias_dialog_title">Буква ярлыка</string>
     <string name="settings_dot_search_aliases_section">Буквы ярлыков</string>
     <string name="settings_dot_search_invalid_alias">Введите одну строчную букву (a-z).</string>
+    <string name="settings_dot_search_alias_taken">Этот символ уже используется.</string>
+    <string name="settings_dot_search_pick_default_app">Выберите приложение для `. запрос`</string>
+    <string name="settings_dot_search_pick_alias_app">Выберите приложение для этого ярлыка</string>
+    <string name="settings_dot_search_pick_alias_search_app">Выберите приложение поиска для этого ярлыка</string>
+    <string name="settings_dot_search_shortcut_mode_label">Открывается сразу</string>
+    <string name="settings_export_logs_share_subject">Лог диагностики Fokus Launcher</string>
+    <string name="toast_export_logs_failed">Не удалось подготовить экспорт логов</string>
+    <string name="settings_reset_confirm_message">Это очистит ваши избранные, ярлыки, скрытые приложения, переименованные приложения и все остальные настройки. Приложение вернётся к исходному состоянию.</string>
+    <string name="settings_font_import_ttf_subtitle">Используйте файл шрифта TrueType с вашего устройства</string>
+    <string name="settings_export_logs_subtitle">Поделиться логом об ошибках</string>
+    <string name="settings_font_import_failed_unreadable">Не удалось прочитать этот файл</string>
+    <string name="settings_font_import_failed_extension">Поддерживаются только шрифты .ttf</string>
+    <string name="settings_drawer_scroll_to_top_auto_keyboard_subtitle">Автоматически открывать клавиатуру и поиск при достижении верха списка приложений</string>
 </resources>
