@@ -166,7 +166,7 @@ private fun appOrderKey(apps: List<AppInfo>): String =
         apps.joinToString(separator = ",") { appListStableKey(it) }
 
 /** Horizontal swipe distance (px) to move to the next/previous category in the app list. */
-private const val DRAWER_CATEGORY_SWIPE_THRESHOLD_PX = 120f
+private const val DRAWER_CATEGORY_SWIPE_THRESHOLD_PX = 60f
 private val DRAWER_MIN_TOP_PADDING = 48.dp
 private val DRAWER_TOP_INSET_BUFFER = 16.dp
 private val DRAWER_CATEGORY_CHIPS_TOP_OFFSET = 12.dp
@@ -892,7 +892,7 @@ fun AppDrawerContent(
                         keyboardController?.show()
                     }
                     overscrollY += available.y
-                    if (overscrollY > 300f) {
+                    if (overscrollY > 150f) {
                         overscrollY = 0f
                         closeWithFocusReset()
                         return available

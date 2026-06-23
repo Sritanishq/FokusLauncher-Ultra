@@ -96,12 +96,12 @@ object Routes {
     const val SETTINGS_PROFILE_NAMES = "settings_profile_names"
 }
 
-private const val SWIPE_THRESHOLD = 200f
+private const val SWIPE_THRESHOLD = 100f
 private const val ANIM_DURATION = 200
 /** Hold at full slide after triggering a shortcut launch, then snap home (ms). */
 private const val SWIPE_LAUNCH_HOLD_MS = 40L
 private const val HORIZONTAL_MAX_SLIDE_RATIO = 0.6f
-private const val HORIZONTAL_TRIGGER_RATIO = 0.6f
+private const val HORIZONTAL_TRIGGER_RATIO = 0.3f
 private const val HORIZONTAL_DRAG_GAIN = 1.8f
 
 private enum class SwipeSide { LEFT, RIGHT }
@@ -476,9 +476,9 @@ fun FokusNavGraph(
                                                 val currentSide = widgetPageSide ?: return
                                                 val halfway =
                                                     if (currentSide == SwipeSide.RIGHT) {
-                                                        pageWidthPx * 0.55f
+                                                        pageWidthPx * 0.275f
                                                     } else {
-                                                        -pageWidthPx * 0.55f
+                                                        -pageWidthPx * 0.275f
                                                     }
                                                 val shouldClose =
                                                     if (currentSide == SwipeSide.RIGHT) {
