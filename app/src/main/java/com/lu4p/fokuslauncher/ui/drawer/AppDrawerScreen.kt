@@ -926,7 +926,7 @@ fun AppDrawerContent(
                         keyboardController?.show()
                     }
                     overscrollY += available.y
-                    if (overscrollY > 150f) {
+                    if (overscrollY > 300f) {
                         overscrollY = 0f
                         closeWithFocusReset()
                         return available
