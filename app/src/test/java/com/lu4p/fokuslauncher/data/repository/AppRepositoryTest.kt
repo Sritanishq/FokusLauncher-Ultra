@@ -256,6 +256,79 @@ class AppRepositoryTest {
     }
 
     @Test
+    fun `LauncherApps package added callback invalidates cache and schedules delayed refresh`() {
+        val callbackSlot = slot<LauncherApps.Callback>()
+        every { launcherApps.registerCallback(capture(callbackSlot), any()) } returns Unit
+        repository = AppRepository(context, appDao, privateSpaceManager)
+
+        every {
+            launcherApps.getActivityList(null, myUser)
+        } returns listOf(createMockLauncherActivity("com.lu4p.app1", "App 1"))
+        repository.getInstalledApps()
+
+        every {
+            launcherApps.getActivityList(null, myUser)
+        } returns
+                listOf(
+                        createMockLauncherActivity("com.lu4p.app1", "App 1"),
+                        createMockLauncherActivity("com.lu4p.app2", "App 2"),
+                )
+        callbackSlot.captured.onPackageAdded("com.lu4p.app2", myUser)
+
+        assertEquals(
+                listOf("com.lu4p.app1", "com.lu4p.app2"),
+                repository.getInstalledApps().map { it.packageName },
+        )
+        assertEquals(1L, repository.getInstalledAppsVersion().value)
+
+        // Immediate reload can still see a stale LauncherApps snapshot; delayed refresh heals it.
+        every {
+            launcherApps.getActivityList(null, myUser)
+        } returns
+                listOf(
+                        createMockLauncherActivity("com.lu4p.app1", "App 1"),
+                        createMockLauncherActivity("com.lu4p.app2", "App 2"),
+                        createMockLauncherActivity("com.lu4p.app3", "App 3"),
+                )
+        org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+        assertEquals(2L, repository.getInstalledAppsVersion().value)
+        assertEquals(
+                listOf("com.lu4p.app1", "com.lu4p.app2", "com.lu4p.app3"),
+                repository.getInstalledApps().map { it.packageName },
+        )
+    }
+
+    @Test
+    fun `LauncherApps package removed callback emits removed package and refreshes`() = runTest {
+        val callbackSlot = slot<LauncherApps.Callback>()
+        every { launcherApps.registerCallback(capture(callbackSlot), any()) } returns Unit
+        repository = AppRepository(context, appDao, privateSpaceManager)
+
+        every {
+            launcherApps.getActivityList(null, myUser)
+        } returns
+                listOf(
+                        createMockLauncherActivity("com.lu4p.app1", "App 1"),
+                        createMockLauncherActivity("com.lu4p.app2", "App 2"),
+                )
+        repository.getInstalledApps()
+
+        val removed = kotlinx.coroutines.async {
+            repository.getRemovedPackages().first()
+        }
+        every {
+            launcherApps.getActivityList(null, myUser)
+        } returns listOf(createMockLauncherActivity("com.lu4p.app1", "App 1"))
+        callbackSlot.captured.onPackageRemoved("com.lu4p.app2", myUser)
+
+        val removedApp = removed.await()
+        assertEquals("com.lu4p.app2", removedApp.packageName)
+        assertEquals("0", removedApp.profileKey)
+        assertEquals(listOf("com.lu4p.app1"), repository.getInstalledApps().map { it.packageName })
+    }
+
+    @Test
     fun `installed apps list matches drawer-style normalized label search`() {
         every {
             launcherApps.getActivityList(null, myUser)

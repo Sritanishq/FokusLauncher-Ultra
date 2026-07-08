@@ -14,6 +14,8 @@ import android.content.pm.ResolveInfo
 import android.content.pm.ShortcutInfo
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.Process
 import android.os.UserHandle
 import android.os.UserManager
@@ -57,7 +59,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import androidx.core.net.toUri
 
 /**
  * Repository responsible for loading and caching installed apps from the system, and managing
@@ -75,6 +76,13 @@ constructor(
     private var cachedArchivedApps: List<AppInfo>? = null
     private val installedAppsVersion = MutableStateFlow(0L)
     private val removedPackages = MutableSharedFlow<RemovedApp>(extraBufferCapacity = 8)
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val delayedInstalledAppsRefresh =
+            Runnable {
+                cachedApps = null
+                cachedArchivedApps = null
+                installedAppsVersion.value += 1
+            }
     private val packageChangeReceiver =
             object : android.content.BroadcastReceiver() {
                 override fun onReceive(context: Context?, intent: Intent?) {
@@ -88,7 +96,7 @@ constructor(
                             if (intent.action == Intent.ACTION_PACKAGE_REMOVED) {
                                 extractRemovedApp(intent)?.let(removedPackages::tryEmit)
                             }
-                            invalidateCache()
+                            scheduleInstalledAppsRefresh()
                         }
                     }
                 }
@@ -99,14 +107,60 @@ constructor(
                 override fun onReceive(context: Context?, intent: Intent?) {
                     when (intent?.action) {
                         Intent.ACTION_MANAGED_PROFILE_ADDED,
-                        Intent.ACTION_MANAGED_PROFILE_REMOVED -> invalidateCache()
+                        Intent.ACTION_MANAGED_PROFILE_REMOVED -> scheduleInstalledAppsRefresh()
                     }
+                }
+            }
+
+    private val launcherAppsCallback =
+            object : LauncherApps.Callback() {
+                override fun onPackageRemoved(packageName: String, user: UserHandle) {
+                    removedPackages.tryEmit(
+                            RemovedApp(
+                                    packageName = packageName,
+                                    profileKey = profileKeyForUser(user),
+                            )
+                    )
+                    scheduleInstalledAppsRefresh()
+                }
+
+                override fun onPackageAdded(packageName: String, user: UserHandle) {
+                    scheduleInstalledAppsRefresh()
+                }
+
+                override fun onPackageChanged(packageName: String, user: UserHandle) {
+                    scheduleInstalledAppsRefresh()
+                }
+
+                override fun onPackagesAvailable(
+                        packageNames: Array<out String>,
+                        user: UserHandle,
+                        replacing: Boolean,
+                ) {
+                    scheduleInstalledAppsRefresh()
+                }
+
+                override fun onPackagesUnavailable(
+                        packageNames: Array<out String>,
+                        user: UserHandle,
+                        replacing: Boolean,
+                ) {
+                    if (!replacing) {
+                        val profileKey = profileKeyForUser(user)
+                        for (packageName in packageNames) {
+                            removedPackages.tryEmit(
+                                    RemovedApp(packageName = packageName, profileKey = profileKey)
+                            )
+                        }
+                    }
+                    scheduleInstalledAppsRefresh()
                 }
             }
 
     init {
         registerPackageChangeReceiver()
         registerProfileChangeReceiver()
+        registerLauncherAppsCallback()
     }
 
     private fun launcherAppsOrNull(): LauncherApps? =
@@ -579,6 +633,20 @@ constructor(
         installedAppsVersion.value += 1
     }
 
+    /**
+     * Invalidates immediately, then again shortly after. Package / archive events often arrive
+     * before [LauncherApps.getActivityList] reflects the new state; a single invalidate can cache
+     * a stale non-empty snapshot until the next unrelated bump.
+     */
+    private fun scheduleInstalledAppsRefresh() {
+        invalidateCache()
+        mainHandler.removeCallbacks(delayedInstalledAppsRefresh)
+        mainHandler.postDelayed(delayedInstalledAppsRefresh, INSTALLED_APPS_REFRESH_RETRY_DELAY_MS)
+    }
+
+    private fun profileKeyForUser(user: UserHandle): String =
+            if (user == Process.myUserHandle()) "0" else appProfileKey(user)
+
     fun getInstalledAppsVersion(): StateFlow<Long> = installedAppsVersion
     fun getRemovedPackages(): SharedFlow<RemovedApp> = removedPackages.asSharedFlow()
 
@@ -811,7 +879,7 @@ constructor(
         val component = app.componentName ?: return false
         val user = app.userHandle ?: Process.myUserHandle()
         return launchMainActivity(component, user).also { launched ->
-            if (launched) invalidateCache()
+            if (launched) scheduleInstalledAppsRefresh()
         }
     }
 
@@ -1039,7 +1107,7 @@ constructor(
                         it == shortcutId
                     }
             launcherApps.pinShortcuts(packageName, remainingIds, user)
-            invalidateCache()
+            scheduleInstalledAppsRefresh()
             true
         } catch (_: Exception) {
             false
@@ -1269,6 +1337,15 @@ constructor(
         }
     }
 
+    private fun registerLauncherAppsCallback() {
+        val launcherApps = launcherAppsOrNull() ?: return
+        try {
+            launcherApps.registerCallback(launcherAppsCallback, mainHandler)
+        } catch (_: Exception) {
+            // Unit tests may provide a mock LauncherApps that cannot register callbacks.
+        }
+    }
+
     private fun inferCategoryFromApplicationInfo(applicationInfo: ApplicationInfo?): String {
         return inferCategoryFromSystem(applicationInfo)
                 ?: SystemCategoryKeys.UTILITIES
@@ -1342,6 +1419,7 @@ constructor(
         private const val TAG = "FokusAppLoad"
         private const val LOAD_EMPTY_RETRY_COUNT = 2
         private const val LOAD_EMPTY_RETRY_DELAY_MS = 150L
+        private const val INSTALLED_APPS_REFRESH_RETRY_DELAY_MS = 400L
     }
 }
 
