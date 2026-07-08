@@ -34,6 +34,8 @@ import io.mockk.slot
 import io.mockk.verify
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import androidx.room.Room
 import com.lu4p.fokuslauncher.data.database.AppDatabase
@@ -300,33 +302,38 @@ class AppRepositoryTest {
     }
 
     @Test
-    fun `LauncherApps package removed callback emits removed package and refreshes`() = runTest {
-        val callbackSlot = slot<LauncherApps.Callback>()
-        every { launcherApps.registerCallback(capture(callbackSlot), any()) } returns Unit
-        repository = AppRepository(context, appDao, privateSpaceManager)
+    fun `LauncherApps package removed callback emits removed package and refreshes`() =
+            runTest(UnconfinedTestDispatcher()) {
+                val callbackSlot = slot<LauncherApps.Callback>()
+                every { launcherApps.registerCallback(capture(callbackSlot), any()) } returns Unit
+                repository = AppRepository(context, appDao, privateSpaceManager)
 
-        every {
-            launcherApps.getActivityList(null, myUser)
-        } returns
-                listOf(
-                        createMockLauncherActivity("com.lu4p.app1", "App 1"),
-                        createMockLauncherActivity("com.lu4p.app2", "App 2"),
+                every {
+                    launcherApps.getActivityList(null, myUser)
+                } returns
+                        listOf(
+                                createMockLauncherActivity("com.lu4p.app1", "App 1"),
+                                createMockLauncherActivity("com.lu4p.app2", "App 2"),
+                        )
+                repository.getInstalledApps()
+
+                val removedApps = mutableListOf<RemovedApp>()
+                backgroundScope.launch {
+                    repository.getRemovedPackages().collect { removedApps += it }
+                }
+                every {
+                    launcherApps.getActivityList(null, myUser)
+                } returns listOf(createMockLauncherActivity("com.lu4p.app1", "App 1"))
+                callbackSlot.captured.onPackageRemoved("com.lu4p.app2", myUser)
+
+                assertEquals(1, removedApps.size)
+                assertEquals("com.lu4p.app2", removedApps.single().packageName)
+                assertEquals("0", removedApps.single().profileKey)
+                assertEquals(
+                        listOf("com.lu4p.app1"),
+                        repository.getInstalledApps().map { it.packageName },
                 )
-        repository.getInstalledApps()
-
-        val removed = kotlinx.coroutines.async {
-            repository.getRemovedPackages().first()
-        }
-        every {
-            launcherApps.getActivityList(null, myUser)
-        } returns listOf(createMockLauncherActivity("com.lu4p.app1", "App 1"))
-        callbackSlot.captured.onPackageRemoved("com.lu4p.app2", myUser)
-
-        val removedApp = removed.await()
-        assertEquals("com.lu4p.app2", removedApp.packageName)
-        assertEquals("0", removedApp.profileKey)
-        assertEquals(listOf("com.lu4p.app1"), repository.getInstalledApps().map { it.packageName })
-    }
+            }
 
     @Test
     fun `installed apps list matches drawer-style normalized label search`() {
