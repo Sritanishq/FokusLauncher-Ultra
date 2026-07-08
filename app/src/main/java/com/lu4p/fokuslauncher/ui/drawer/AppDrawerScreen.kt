@@ -58,7 +58,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -863,7 +862,6 @@ fun AppDrawerContent(
     // Sidebar icon search: focus when opened (independent of list scroll position).
     LaunchedEffect(showSearch, useSidebarCategoryDrawer) {
         if (useSidebarCategoryDrawer && showSearch) {
-            delay(100)
             focusRequester.requestFocus()
             keyboardController?.show()
         }
@@ -890,7 +888,6 @@ fun AppDrawerContent(
         val topAutoLaunch =
                 isAtTop && (!hasScrolledDown || uiState.drawerScrollToTopAutoKeyboard)
         if (topAutoLaunch) {
-            delay(100)
             focusRequester.requestFocus()
             keyboardController?.show()
         } else if (!isAtTop) {
