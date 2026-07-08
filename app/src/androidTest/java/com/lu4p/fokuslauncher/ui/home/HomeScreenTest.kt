@@ -289,6 +289,7 @@ class HomeScreenTest {
                 HomeScreenContent(
                         uiState = HomeUiState(),
                         clockUiState = clock(),
+                        weatherUiState = weatherOff,
                         screenTimeUiState = HomeScreenTimeUiState(),
                         favorites = testFavorites,
                         rightSideShortcuts = testRightSideShortcuts,

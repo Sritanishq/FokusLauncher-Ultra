@@ -845,36 +845,44 @@ fun AppDrawerContent(
         derivedStateOf { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0 }
     }
     var hasScrolledDown by remember { mutableStateOf(false) }
+    // Tracks prior at-top so sidebar search auto-close only runs on scroll-away, not on icon reopen.
+    var wasAtTop by remember { mutableStateOf(true) }
 
-    // Unified Search/Keyboard management: entry focus, scroll-to-top (chip layout only), pull-to-open.
-    LaunchedEffect(isAtTop, showSearch, useSidebarCategoryDrawer, uiState.drawerScrollToTopAutoKeyboard) {
+    // Sidebar icon search: focus when opened (independent of list scroll position).
+    LaunchedEffect(showSearch, useSidebarCategoryDrawer) {
+        if (useSidebarCategoryDrawer && showSearch) {
+            delay(100)
+            focusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
+
+    // Chip layout: auto-focus at top / dismiss keyboard when scrolling away.
+    // Sidebar: hide empty search only on scroll-away (not when reopening while already scrolled).
+    LaunchedEffect(isAtTop, useSidebarCategoryDrawer, uiState.drawerScrollToTopAutoKeyboard) {
         if (useSidebarCategoryDrawer) {
-            // Scroll-to-top does not apply: search is icon-only; focus only when user opens search.
-            if (showSearch && isAtTop) {
-                delay(100)
-                focusRequester.requestFocus()
-                keyboardController?.show()
-            } else if (!isAtTop) {
+            if (!isAtTop) {
                 hasScrolledDown = true
-                if (uiState.searchQuery.isBlank()) {
+                if (wasAtTop && showSearch && uiState.searchQuery.isBlank()) {
                     keyboardController?.hide()
                     focusManager.clearFocus(force = true)
                     showSearch = false
                 }
             }
-        } else {
-            val topAutoLaunch =
-                    isAtTop && (!hasScrolledDown || uiState.drawerScrollToTopAutoKeyboard)
-            if (topAutoLaunch) {
-                delay(100)
-                focusRequester.requestFocus()
-                keyboardController?.show()
-            } else if (!isAtTop) {
-                hasScrolledDown = true
-                if (uiState.searchQuery.isBlank()) {
-                    keyboardController?.hide()
-                    focusManager.clearFocus(force = true)
-                }
+            wasAtTop = isAtTop
+            return@LaunchedEffect
+        }
+        val topAutoLaunch =
+                isAtTop && (!hasScrolledDown || uiState.drawerScrollToTopAutoKeyboard)
+        if (topAutoLaunch) {
+            delay(100)
+            focusRequester.requestFocus()
+            keyboardController?.show()
+        } else if (!isAtTop) {
+            hasScrolledDown = true
+            if (uiState.searchQuery.isBlank()) {
+                keyboardController?.hide()
+                focusManager.clearFocus(force = true)
             }
         }
     }
@@ -1026,7 +1034,18 @@ fun AppDrawerContent(
                                         modifier = Modifier.weight(1f)
                                 )
                                 FokusIconButton(
-                                        onClick = { showSearch = !showSearch },
+                                        onClick = {
+                                            if (showSearch) {
+                                                showSearch = false
+                                                if (uiState.searchQuery.isNotEmpty()) {
+                                                    onSearchQueryChanged("")
+                                                }
+                                                keyboardController?.hide()
+                                                focusManager.clearFocus(force = true)
+                                            } else {
+                                                showSearch = true
+                                            }
+                                        },
                                         modifier = Modifier.testTag("drawer_search_icon")
                                 ) {
                                     LauncherIcon(

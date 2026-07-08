@@ -9,6 +9,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import com.lu4p.fokuslauncher.data.model.AppInfo
 import com.lu4p.fokuslauncher.data.model.ReservedCategoryNames
 import com.lu4p.fokuslauncher.ui.theme.FokusLauncherTheme
@@ -159,6 +161,41 @@ class AppDrawerScreenTest {
             }
         }
 
+        composeTestRule.onNodeWithTag("drawer_search_icon").performClick()
+        composeTestRule.onNodeWithTag("search_bar").assertIsDisplayed()
+    }
+
+    @Test
+    fun appDrawer_sidebarSearch_reopensAfterScrollAwayAndClose() {
+        val manyApps =
+            (1..40).map { index ->
+                AppInfo("com.lu4p.app$index", "App %02d".format(index), null)
+            }
+
+        composeTestRule.setContent {
+            FokusLauncherTheme {
+                AppDrawerContent(
+                    uiState = singleProfileState(manyApps),
+                    onSearchQueryChanged = {},
+                    onCategorySelected = {},
+                    onAppClick = {},
+                    onSettingsClick = {},
+                    useSidebarCategoryDrawer = true
+                )
+            }
+        }
+
+        // Opening search while scrolled used to immediately force-close it.
+        composeTestRule.onNodeWithTag("app_list").performTouchInput { swipeUp() }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("drawer_search_icon").performClick()
+        composeTestRule.onNodeWithTag("search_bar").assertIsDisplayed()
+
+        // Closing then reopening while still scrolled must keep the bar visible.
+        composeTestRule.onNodeWithTag("drawer_search_icon").performClick()
+        composeTestRule.onAllNodesWithTag("search_bar").fetchSemanticsNodes().also {
+            assertEquals(0, it.size)
+        }
         composeTestRule.onNodeWithTag("drawer_search_icon").performClick()
         composeTestRule.onNodeWithTag("search_bar").assertIsDisplayed()
     }
