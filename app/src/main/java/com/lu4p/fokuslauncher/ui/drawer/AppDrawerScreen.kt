@@ -826,6 +826,7 @@ fun AppDrawerContent(
     val selectCategoryWithFocusReset: (String) -> Unit = { category ->
         keyboardController?.hide()
         focusManager.clearFocus(force = true)
+        if (useSidebarCategoryDrawer) showSearch = false
         onCategorySelected(category)
     }
     val latestOnCategorySelected = rememberUpdatedState(selectCategoryWithFocusReset)
@@ -868,7 +869,7 @@ fun AppDrawerContent(
         }
     }
 
-    // Chip layout: auto-focus at top / dismiss keyboard when scrolling away.
+    // Chip layout: auto-focus at top. Keyboard dismiss-on-scroll is handled in nestedScroll.
     // Sidebar: hide empty search only on scroll-away (not when reopening while already scrolled).
     LaunchedEffect(isAtTop, useSidebarCategoryDrawer, uiState.drawerScrollToTopAutoKeyboard) {
         if (isAtTop) {
@@ -894,24 +895,31 @@ fun AppDrawerContent(
             keyboardController?.show()
         } else if (!isAtTop) {
             hasScrolledDown = true
-            if (uiState.searchQuery.isBlank() && userDraggedList) {
-                keyboardController?.hide()
-                focusManager.clearFocus(force = true)
-            }
         }
     }
 
     var overscrollY by remember { mutableFloatStateOf(0f) }
+    val latestUseSidebar = rememberUpdatedState(useSidebarCategoryDrawer)
+    val latestShowSearch = rememberUpdatedState(showSearch)
+    val latestScrollToTopAutoKeyboard =
+            rememberUpdatedState(uiState.drawerScrollToTopAutoKeyboard)
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (source == NestedScrollSource.UserInput && available.y < 0) {
                     // Finger scrolling the list away from the top.
                     userDraggedList = true
+                    // Dismiss keyboard as soon as the user scrolls down while search is open
+                    // (chip mode always; sidebar only when the search field is shown).
+                    val searchOpen = !latestUseSidebar.value || latestShowSearch.value
+                    if (searchOpen) {
+                        keyboardController?.hide()
+                        focusManager.clearFocus(force = true)
+                    }
                 }
                 if (source == NestedScrollSource.UserInput && available.y > 0 && !listState.canScrollBackward) {
                     // Immediate response for pull-down gesture at the boundary
-                    if (uiState.drawerScrollToTopAutoKeyboard && !useSidebarCategoryDrawer) {
+                    if (latestScrollToTopAutoKeyboard.value && !latestUseSidebar.value) {
                         // LaunchedEffect(isAtTop) handles focus when scrolling to top; re-request
                         // if already at top and pulling down at the list boundary.
                         focusRequester.requestFocus()

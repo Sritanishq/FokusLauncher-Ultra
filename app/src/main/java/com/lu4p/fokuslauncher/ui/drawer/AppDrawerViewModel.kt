@@ -1048,16 +1048,25 @@ constructor(
     fun onCategorySelected(category: String) {
         viewModelScope.launch {
             val state = _uiState.value
+            // Sidebar search is a temporary overlay; switching categories closes it and clears
+            // the query so the new category is shown unfiltered.
+            val rawSearchQuery =
+                    if (state.useSidebarCategoryDrawer) "" else state.searchQuery
+            if (state.useSidebarCategoryDrawer && state.searchQuery.isNotEmpty()) {
+                searchQueryApplyJob?.cancel()
+                searchQueryRequestId += 1
+            }
             val filteredContent =
                     buildFilteredDrawerContent(
                             allApps = state.allApps,
                             privateApps = state.privateSpaceApps,
-                            rawSearchQuery = state.searchQuery,
+                            rawSearchQuery = rawSearchQuery,
                             category = category,
                             useSidebarCategoryDrawer = state.useSidebarCategoryDrawer,
                     )
             _uiState.update {
-                it.withFilteredContent(filteredContent).copy(selectedCategory = category)
+                it.withFilteredContent(filteredContent)
+                        .copy(selectedCategory = category, searchQuery = rawSearchQuery)
             }
         }
     }
