@@ -14,6 +14,8 @@ import com.lu4p.fokuslauncher.data.model.AppShortcutAction
 import com.lu4p.fokuslauncher.data.model.FavoriteApp
 import com.lu4p.fokuslauncher.data.model.HomeDateFormatStyle
 import com.lu4p.fokuslauncher.data.model.HomeAlignment
+import com.lu4p.fokuslauncher.data.model.NotificationIndicatorColorPreset
+import com.lu4p.fokuslauncher.data.model.NotificationIndicatorStyle
 import com.lu4p.fokuslauncher.data.model.TemperatureUnit
 import com.lu4p.fokuslauncher.data.model.ReservedCategoryNames
 import com.lu4p.fokuslauncher.data.model.metadataSettingsStableKey
@@ -88,6 +90,10 @@ data class SettingsUiState(
         val showHomeBattery: Boolean = true,
         val showHomeMedia: Boolean = false,
         val showHomeScreenTime: Boolean = false,
+        val showNotificationIndicators: Boolean = false,
+        val notificationIndicatorStyle: NotificationIndicatorStyle =
+                NotificationIndicatorStyle.DOT,
+        val notificationIndicatorColor: Int = NotificationIndicatorColorPreset.DEFAULT.argb,
         val homeDateFormatStyle: HomeDateFormatStyle = HomeDateFormatStyle.SYSTEM_DEFAULT,
         val temperatureUnit: TemperatureUnit = TemperatureUnit.SYSTEM_DEFAULT,
         /** Vertical category sidebar in the app drawer. */
@@ -242,12 +248,27 @@ constructor(
                                 suppressedCategories = suppressed,
                         )
                     }
+            val mediaAndIndicatorsFlow =
+                    combine(
+                            preferencesManager.showHomeMediaFlow,
+                            preferencesManager.showHomeScreenTimeFlow,
+                            preferencesManager.showNotificationIndicatorsFlow,
+                            preferencesManager.notificationIndicatorStyleFlow,
+                            preferencesManager.notificationIndicatorColorFlow,
+                    ) { showMedia, showScreenTime, showIndicators, indicatorStyle, indicatorColor ->
+                        MediaAndIndicatorPrefs(
+                                showMedia = showMedia,
+                                showScreenTime = showScreenTime,
+                                showNotificationIndicators = showIndicators,
+                                notificationIndicatorStyle = indicatorStyle,
+                                notificationIndicatorColor = indicatorColor,
+                        )
+                    }
             val visibilityAndMediaFlow =
                     combine(
                             preferencesManager.homeWidgetVisibilityFlow,
-                            preferencesManager.showHomeMediaFlow,
-                            preferencesManager.showHomeScreenTimeFlow,
-                    ) { vis, showMedia, showScreenTime -> Triple(vis, showMedia, showScreenTime) }
+                            mediaAndIndicatorsFlow,
+                    ) { vis, mediaAndIndicators -> vis to mediaAndIndicators }
             val homeWidgetItemsFlow =
                     combine(
                             visibilityAndMediaFlow,
@@ -255,14 +276,20 @@ constructor(
                             preferencesManager.preferredCalendarTapFlow,
                             preferencesManager.homeDateFormatStyleFlow,
                             preferencesManager.temperatureUnitFlow,
-                    ) { (vis, showMedia, showScreenTime), clk, cal, fmt, tempUnit ->
+                    ) { (vis, mediaAndIndicators), clk, cal, fmt, tempUnit ->
                         HomeWidgetItemSettings(
                                 showClock = vis.showClock,
                                 showDate = vis.showDate,
                                 showWeather = vis.showWeather,
                                 showBattery = vis.showBattery,
-                                showMedia = showMedia,
-                                showScreenTime = showScreenTime,
+                                showMedia = mediaAndIndicators.showMedia,
+                                showScreenTime = mediaAndIndicators.showScreenTime,
+                                showNotificationIndicators =
+                                        mediaAndIndicators.showNotificationIndicators,
+                                notificationIndicatorStyle =
+                                        mediaAndIndicators.notificationIndicatorStyle,
+                                notificationIndicatorColor =
+                                        mediaAndIndicators.notificationIndicatorColor,
                                 preferredClockTap = clk,
                                 preferredCalendarTap = cal,
                                 homeDateFormatStyle = fmt,
@@ -462,6 +489,9 @@ constructor(
                         showHomeBattery = homeWidgetItems.showBattery,
                         showHomeMedia = homeWidgetItems.showMedia,
                         showHomeScreenTime = homeWidgetItems.showScreenTime,
+                        showNotificationIndicators = homeWidgetItems.showNotificationIndicators,
+                        notificationIndicatorStyle = homeWidgetItems.notificationIndicatorStyle,
+                        notificationIndicatorColor = homeWidgetItems.notificationIndicatorColor,
                         homeDateFormatStyle = homeWidgetItems.homeDateFormatStyle,
                         temperatureUnit = homeWidgetItems.temperatureUnit,
                         drawerSidebarCategories = drawer.drawerSidebarCategories,
@@ -495,6 +525,14 @@ constructor(
         }
     }
 
+    private data class MediaAndIndicatorPrefs(
+            val showMedia: Boolean,
+            val showScreenTime: Boolean,
+            val showNotificationIndicators: Boolean,
+            val notificationIndicatorStyle: NotificationIndicatorStyle,
+            val notificationIndicatorColor: Int,
+    )
+
     private data class HomeWidgetItemSettings(
             val showClock: Boolean,
             val showDate: Boolean,
@@ -502,6 +540,9 @@ constructor(
             val showBattery: Boolean,
             val showMedia: Boolean,
             val showScreenTime: Boolean,
+            val showNotificationIndicators: Boolean,
+            val notificationIndicatorStyle: NotificationIndicatorStyle,
+            val notificationIndicatorColor: Int,
             val preferredClockTap: WidgetTapTarget?,
             val preferredCalendarTap: WidgetTapTarget?,
             val homeDateFormatStyle: HomeDateFormatStyle,
@@ -842,6 +883,18 @@ constructor(
     fun setShowHomeMedia(show: Boolean) = launchPreferences { setShowHomeMedia(show) }
 
     fun setShowHomeScreenTime(show: Boolean) = launchPreferences { setShowHomeScreenTime(show) }
+
+    fun setShowNotificationIndicators(show: Boolean) =
+            launchPreferences { setShowNotificationIndicators(show) }
+
+    fun setNotificationIndicatorStyle(style: NotificationIndicatorStyle) =
+            launchPreferences { setNotificationIndicatorStyle(style) }
+
+    fun setNotificationIndicatorColor(argb: Int) =
+            launchPreferences { setNotificationIndicatorColor(argb) }
+
+    fun setNotificationIndicatorColorPreset(preset: NotificationIndicatorColorPreset) =
+            setNotificationIndicatorColor(preset.argb)
 
     fun setHomeDateFormatStyle(style: HomeDateFormatStyle) =
             launchPreferences { setHomeDateFormatStyle(style) }

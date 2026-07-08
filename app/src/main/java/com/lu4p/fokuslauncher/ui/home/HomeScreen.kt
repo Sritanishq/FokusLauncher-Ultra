@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -60,6 +61,8 @@ import com.lu4p.fokuslauncher.ui.drawer.profileOriginLabelForFavorite
 import com.lu4p.fokuslauncher.data.model.FavoriteApp
 import com.lu4p.fokuslauncher.data.model.HomeAlignment
 import com.lu4p.fokuslauncher.data.model.HomeShortcut
+import com.lu4p.fokuslauncher.data.model.NotificationIndicatorStyle
+import com.lu4p.fokuslauncher.data.model.drawerOpenCountKey
 import com.lu4p.fokuslauncher.ui.components.ClockWidget
 import com.lu4p.fokuslauncher.ui.components.DateBatteryRow
 import com.lu4p.fokuslauncher.ui.components.FokusBottomSheet
@@ -93,6 +96,8 @@ fun HomeScreen(
     val weatherUiState by viewModel.weatherUiState.collectAsStateWithLifecycle()
     val mediaUiState by viewModel.mediaUiState.collectAsStateWithLifecycle()
     val screenTimeUiState by viewModel.screenTimeUiState.collectAsStateWithLifecycle()
+    val notificationIndicatorUiState by
+            viewModel.notificationIndicatorUiState.collectAsStateWithLifecycle()
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
     val rightSideShortcuts by viewModel.rightSideShortcuts.collectAsStateWithLifecycle()
     val allInstalledApps by viewModel.allInstalledApps.collectAsStateWithLifecycle()
@@ -125,6 +130,7 @@ fun HomeScreen(
         viewModel.refreshDoubleTapLockEffective()
         viewModel.refreshWeather()
         viewModel.refreshMedia()
+        viewModel.refreshNotificationIndicators()
         viewModel.refreshScreenTime()
     }
 
@@ -135,6 +141,7 @@ fun HomeScreen(
             weatherUiState = weatherUiState,
             mediaUiState = mediaUiState,
             screenTimeUiState = screenTimeUiState,
+            notificationIndicatorUiState = notificationIndicatorUiState,
             favorites = favorites,
             installedApps = allInstalledApps,
             rightSideShortcuts = rightSideShortcuts,
@@ -233,6 +240,8 @@ fun HomeScreenContent(
     modifier: Modifier = Modifier,
     mediaUiState: HomeMediaUiState = HomeMediaUiState(),
     screenTimeUiState: HomeScreenTimeUiState = HomeScreenTimeUiState(),
+    notificationIndicatorUiState: HomeNotificationIndicatorUiState =
+            HomeNotificationIndicatorUiState(),
     installedApps: List<AppInfo> = emptyList(),
     onLabelLongPress: (FavoriteApp) -> Unit = {},
     onHomeScreenLongPress: () -> Unit = {},
@@ -311,6 +320,7 @@ fun HomeScreenContent(
                 profileDisplayNameOverrides = profileDisplayNameOverrides,
                 launcherFontScale = uiState.launcherFontScale,
                 outlined = uiState.usesPhotoWallpaper,
+                notificationIndicatorUiState = notificationIndicatorUiState,
                 onLabelClick = onLabelClick,
                 onLabelLongPress = onLabelLongPress,
                 onIconClick = onIconClick
@@ -529,6 +539,8 @@ private fun FavoritesList(
     onLabelLongPress: (FavoriteApp) -> Unit,
     modifier: Modifier = Modifier,
     outlined: Boolean = false,
+    notificationIndicatorUiState: HomeNotificationIndicatorUiState =
+            HomeNotificationIndicatorUiState(),
 ) {
     Column(
         modifier = modifier,
@@ -544,6 +556,7 @@ private fun FavoritesList(
                 onLongPress = { onLabelLongPress(fav) },
                 horizontalAlignment = horizontalAlignment,
                 outlined = outlined,
+                notificationIndicatorUiState = notificationIndicatorUiState,
             )
         }
     }
@@ -585,6 +598,8 @@ private fun HomeFavoritesSection(
     profileDisplayNameOverrides: Map<String, String>,
     launcherFontScale: Float,
     outlined: Boolean,
+    notificationIndicatorUiState: HomeNotificationIndicatorUiState =
+            HomeNotificationIndicatorUiState(),
     onLabelClick: (FavoriteApp) -> Unit,
     onLabelLongPress: (FavoriteApp) -> Unit,
     onIconClick: (HomeShortcut) -> Unit,
@@ -620,6 +635,7 @@ private fun HomeFavoritesSection(
                     onLabelClick = onLabelClick,
                     onLabelLongPress = onLabelLongPress,
                     outlined = outlined,
+                    notificationIndicatorUiState = notificationIndicatorUiState,
                 )
                 if (rightSideShortcuts.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(shortcutRowTopSpacer))
@@ -657,6 +673,7 @@ private fun HomeFavoritesSection(
                             onLabelLongPress = onLabelLongPress,
                             modifier = Modifier.weight(1f),
                             outlined = outlined,
+                            notificationIndicatorUiState = notificationIndicatorUiState,
                     )
                 }
                 val icons: @Composable () -> Unit = {
@@ -754,6 +771,8 @@ private fun FavoriteAppItem(
         onLongPress: () -> Unit,
         horizontalAlignment: Alignment.Horizontal,
         outlined: Boolean,
+        notificationIndicatorUiState: HomeNotificationIndicatorUiState =
+                HomeNotificationIndicatorUiState(),
 ) {
     val context = LocalContext.current
     val badge =
@@ -765,6 +784,25 @@ private fun FavoriteAppItem(
                         }
                 profileOriginLabelForFavorite(context, fav, match, profileDisplayNameOverrides)
             }
+    val appKey = drawerOpenCountKey(fav.packageName, fav.profileKey)
+    val hasNotification =
+            notificationIndicatorUiState.enabled &&
+                    appKey in notificationIndicatorUiState.appsWithNotifications
+    val textColor = MaterialTheme.colorScheme.onBackground
+    val indicatorColor = Color(notificationIndicatorUiState.colorArgb)
+    val labelColor =
+            if (hasNotification &&
+                            notificationIndicatorUiState.style ==
+                                    NotificationIndicatorStyle.COLORED_LABEL
+            ) {
+                indicatorColor
+            } else {
+                textColor
+            }
+    val showDot =
+            hasNotification &&
+                    notificationIndicatorUiState.style == NotificationIndicatorStyle.DOT
+    val dotLeading = horizontalAlignment == Alignment.Start
     Column(
             horizontalAlignment = horizontalAlignment,
             modifier =
@@ -776,18 +814,31 @@ private fun FavoriteAppItem(
                             )
                             .testTag("favorite_${fav.label}"),
     ) {
-        if (outlined) {
-            OutlinedText(
-                    text = fav.label,
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
-            )
-        } else {
-            Text(
-                    text = fav.label,
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
-            )
+        Box {
+            if (outlined) {
+                OutlinedText(
+                        text = fav.label,
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = labelColor,
+                )
+            } else {
+                Text(
+                        text = fav.label,
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = labelColor,
+                )
+            }
+            if (showDot) {
+                NotificationIndicatorDot(
+                        color = textColor,
+                        modifier =
+                                Modifier.align(
+                                                if (dotLeading) Alignment.CenterStart
+                                                else Alignment.CenterEnd
+                                        )
+                                        .offset(x = if (dotLeading) (-16).dp else 16.dp),
+                )
+            }
         }
         if (badge != null) {
             if (outlined) {
@@ -808,6 +859,15 @@ private fun FavoriteAppItem(
             }
         }
     }
+}
+
+@Composable
+private fun NotificationIndicatorDot(color: Color, modifier: Modifier = Modifier) {
+    Box(
+            modifier =
+                    modifier.size(8.dp)
+                            .background(color = color, shape = CircleShape),
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

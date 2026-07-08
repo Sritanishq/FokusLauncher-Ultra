@@ -18,10 +18,12 @@ import com.lu4p.fokuslauncher.ui.components.FokusTextButton
 import com.lu4p.fokuslauncher.ui.components.LauncherIcon
 import com.lu4p.fokuslauncher.ui.util.rememberBooleanChangeWithSystemSound
 import com.lu4p.fokuslauncher.ui.util.rememberClickWithSystemSound
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -75,6 +77,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -85,7 +88,6 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.background
 import com.lu4p.fokuslauncher.R
 import com.lu4p.fokuslauncher.data.font.CustomFontImportFailure
 import com.lu4p.fokuslauncher.data.model.LauncherFontPreferences
@@ -105,6 +107,8 @@ import com.lu4p.fokuslauncher.data.model.AppShortcutAction
 import com.lu4p.fokuslauncher.data.model.DrawerAppSortMode
 import com.lu4p.fokuslauncher.data.model.HomeDateFormatStyle
 import com.lu4p.fokuslauncher.data.model.HomeAlignment
+import com.lu4p.fokuslauncher.data.model.NotificationIndicatorColorPreset
+import com.lu4p.fokuslauncher.data.model.NotificationIndicatorStyle
 import com.lu4p.fokuslauncher.data.model.TemperatureUnit
 import com.lu4p.fokuslauncher.data.model.LauncherVisualStyle
 import com.lu4p.fokuslauncher.data.model.ShortcutTarget
@@ -125,7 +129,6 @@ import com.lu4p.fokuslauncher.ui.util.OnResumeEffect
 import com.lu4p.fokuslauncher.ui.util.formatShortcutTargetDisplay
 import android.app.Activity
 import androidx.annotation.StringRes
-import androidx.compose.ui.graphics.vector.ImageVector
 
 private data class SubpageNavRow(
         @param:StringRes val labelRes: Int,
@@ -884,6 +887,7 @@ fun HomeWidgetsSettingsScreen(
 
     var mediaNotificationAccessTick by remember { mutableIntStateOf(0) }
     var pendingMediaEnable by remember { mutableStateOf(false) }
+    var pendingNotificationIndicatorsEnable by remember { mutableStateOf(false) }
     var usageAccessTick by remember { mutableIntStateOf(0) }
     var pendingScreenTimeEnable by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -903,6 +907,18 @@ fun HomeWidgetsSettingsScreen(
             viewModel.setShowHomeMedia(true)
         } else if (uiState.showHomeMedia && !mediaNotificationAccessEnabled) {
             viewModel.setShowHomeMedia(false)
+        }
+    }
+    LaunchedEffect(
+            mediaNotificationAccessTick,
+            uiState.showNotificationIndicators,
+            pendingNotificationIndicatorsEnable,
+    ) {
+        if (pendingNotificationIndicatorsEnable && mediaNotificationAccessEnabled) {
+            pendingNotificationIndicatorsEnable = false
+            viewModel.setShowNotificationIndicators(true)
+        } else if (uiState.showNotificationIndicators && !mediaNotificationAccessEnabled) {
+            viewModel.setShowNotificationIndicators(false)
         }
     }
     LaunchedEffect(usageAccessTick, uiState.showHomeScreenTime, pendingScreenTimeEnable) {
@@ -1030,6 +1046,48 @@ fun HomeWidgetsSettingsScreen(
                             }
                         },
                 )
+            }
+            item { SettingsDivider() }
+            item {
+                SettingsToggleRow(
+                        label = stringResource(R.string.settings_notification_indicators),
+                        subtitle =
+                                if (mediaNotificationAccessEnabled) {
+                                    stringResource(R.string.settings_notification_indicators_subtitle)
+                                } else {
+                                    stringResource(
+                                            R.string.settings_notification_indicators_subtitle_grant_access
+                                    )
+                                },
+                        checked = uiState.showNotificationIndicators,
+                        onCheckedChange = { checked ->
+                            if (checked) {
+                                if (mediaNotificationAccessEnabled) {
+                                    viewModel.setShowNotificationIndicators(true)
+                                } else {
+                                    pendingNotificationIndicatorsEnable = true
+                                    MediaNotificationHelper.openListenerSettings(context)
+                                }
+                            } else {
+                                pendingNotificationIndicatorsEnable = false
+                                viewModel.setShowNotificationIndicators(false)
+                            }
+                        },
+                )
+            }
+            if (uiState.showNotificationIndicators) {
+                item {
+                    NotificationIndicatorStyleDropdown(
+                            currentStyle = uiState.notificationIndicatorStyle,
+                            onStyleSelected = viewModel::setNotificationIndicatorStyle,
+                    )
+                }
+                item {
+                    NotificationIndicatorColorDropdown(
+                            currentColor = uiState.notificationIndicatorColor,
+                            onColorSelected = viewModel::setNotificationIndicatorColorPreset,
+                    )
+                }
             }
             item { SettingsDivider() }
             item {
@@ -1302,6 +1360,71 @@ private fun TemperatureUnitDropdown(
                 )
             },
             onItemSelected = onUnitSelected,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NotificationIndicatorStyleDropdown(
+        currentStyle: NotificationIndicatorStyle,
+        onStyleSelected: (NotificationIndicatorStyle) -> Unit,
+) {
+    val options = remember { NotificationIndicatorStyle.entries }
+    var expanded by remember { mutableStateOf(false) }
+    val onExpandedChange = rememberBooleanChangeWithSystemSound { expanded = it }
+    SettingsDropdown(
+            title = stringResource(R.string.settings_notification_indicator_style),
+            options = options,
+            expanded = expanded,
+            onExpandedChange = onExpandedChange,
+            selectedDisplayText = stringResource(currentStyle.labelRes),
+            itemContent = { style ->
+                Text(
+                        text = stringResource(style.labelRes),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onBackground,
+                )
+            },
+            onItemSelected = onStyleSelected,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NotificationIndicatorColorDropdown(
+        currentColor: Int,
+        onColorSelected: (NotificationIndicatorColorPreset) -> Unit,
+) {
+    val options = remember { NotificationIndicatorColorPreset.entries }
+    val currentPreset = remember(currentColor) {
+        NotificationIndicatorColorPreset.fromArgb(currentColor)
+    }
+    var expanded by remember { mutableStateOf(false) }
+    val onExpandedChange = rememberBooleanChangeWithSystemSound { expanded = it }
+    SettingsDropdown(
+            title = stringResource(R.string.settings_notification_indicator_color),
+            options = options,
+            expanded = expanded,
+            onExpandedChange = onExpandedChange,
+            selectedDisplayText = stringResource(currentPreset.labelRes),
+            fieldTextColor = Color(currentPreset.argb),
+            menuItemTextColor = { Color(it.argb) },
+            itemContent = { preset ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                            modifier =
+                                    Modifier.size(12.dp)
+                                            .background(Color(preset.argb), CircleShape),
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                            text = stringResource(preset.labelRes),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color(preset.argb),
+                    )
+                }
+            },
+            onItemSelected = onColorSelected,
     )
 }
 

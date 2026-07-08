@@ -14,6 +14,8 @@ import com.lu4p.fokuslauncher.data.model.DotSearchTargetPreference
 import com.lu4p.fokuslauncher.data.model.DotSearchTargetMode
 import com.lu4p.fokuslauncher.data.model.DrawerAppSortMode
 import com.lu4p.fokuslauncher.data.model.FavoriteApp
+import com.lu4p.fokuslauncher.data.model.NotificationIndicatorColorPreset
+import com.lu4p.fokuslauncher.data.model.NotificationIndicatorStyle
 import com.lu4p.fokuslauncher.data.model.ReservedCategoryNames
 import com.lu4p.fokuslauncher.data.model.ShortcutTarget
 import com.lu4p.fokuslauncher.data.model.HOST_APP_METADATA_SENTINEL
@@ -21,6 +23,7 @@ import com.lu4p.fokuslauncher.data.model.favoriteAppStableKey
 import com.lu4p.fokuslauncher.data.model.appProfileKey
 import com.lu4p.fokuslauncher.data.repository.AppRepository
 import com.lu4p.fokuslauncher.data.repository.RemovedApp
+import com.lu4p.fokuslauncher.notification.NotificationIndicatorRepository
 import com.lu4p.fokuslauncher.utils.PrivateSpaceManager
 import io.mockk.clearMocks
 import io.mockk.coEvery
@@ -33,6 +36,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -53,6 +57,7 @@ class AppDrawerViewModelTest {
     private lateinit var appRepository: AppRepository
     private lateinit var privateSpaceManager: PrivateSpaceManager
     private lateinit var preferencesManager: PreferencesManager
+    private lateinit var notificationIndicatorRepository: NotificationIndicatorRepository
     private lateinit var viewModel: AppDrawerViewModel
     private val testDispatcher = UnconfinedTestDispatcher()
 
@@ -104,6 +109,9 @@ class AppDrawerViewModelTest {
         appRepository = mockk(relaxed = true)
         privateSpaceManager = mockk(relaxed = true)
         preferencesManager = mockk(relaxed = true)
+        notificationIndicatorRepository = mockk(relaxed = true)
+        every { notificationIndicatorRepository.appsWithNotifications } returns
+                MutableStateFlow(emptySet())
         installedAppsVersion.value = 0L
         every { appRepository.getInstalledAppsVersion() } returns installedAppsVersion.asStateFlow()
         every { appRepository.getRemovedPackages() } returns removedPackages
@@ -123,6 +131,11 @@ class AppDrawerViewModelTest {
         every { preferencesManager.drawerCustomAppOrderFlow } returns drawerCustomAppOrderFlow
         every { preferencesManager.drawerSidebarCategoriesFlow } returns drawerSidebarCategoriesFlow
         every { preferencesManager.drawerSearchAutoLaunchFlow } returns drawerSearchAutoLaunchFlow
+        every { preferencesManager.showNotificationIndicatorsFlow } returns flowOf(false)
+        every { preferencesManager.notificationIndicatorStyleFlow } returns
+                flowOf(NotificationIndicatorStyle.DOT)
+        every { preferencesManager.notificationIndicatorColorFlow } returns
+                flowOf(NotificationIndicatorColorPreset.DEFAULT.argb)
         coEvery { preferencesManager.setDrawerAppSortMode(any()) } coAnswers {
             drawerAppSortModeFlow.value = invocation.args[0] as DrawerAppSortMode
         }
@@ -148,6 +161,7 @@ class AppDrawerViewModelTest {
                         appRepository,
                         privateSpaceManager,
                         preferencesManager,
+                        notificationIndicatorRepository,
                         Dispatchers.Unconfined
                 )
         awaitState("apps to load") { it.allApps.isNotEmpty() }
@@ -572,7 +586,6 @@ class AppDrawerViewModelTest {
                 favorite.resolvedIconTarget,
         )
     }
-
 
     @Test
     fun `addToHomeScreen stores work profile app with profileKey`() {

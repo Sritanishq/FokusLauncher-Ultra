@@ -12,6 +12,8 @@ import com.lu4p.fokuslauncher.data.model.AppInfo
 import com.lu4p.fokuslauncher.data.model.DotSearchTargetPreference
 import com.lu4p.fokuslauncher.data.model.DotSearchTargetMode
 import com.lu4p.fokuslauncher.data.model.DrawerAppSortMode
+import com.lu4p.fokuslauncher.data.model.NotificationIndicatorColorPreset
+import com.lu4p.fokuslauncher.data.model.NotificationIndicatorStyle
 import com.lu4p.fokuslauncher.data.model.ReservedCategoryNames
 import com.lu4p.fokuslauncher.data.model.FavoriteApp
 import com.lu4p.fokuslauncher.data.model.ShortcutTarget
@@ -26,6 +28,8 @@ import com.lu4p.fokuslauncher.data.model.appProfileKey
 import com.lu4p.fokuslauncher.data.model.drawerOpenCountKey
 import com.lu4p.fokuslauncher.data.model.favoriteAppStableKey
 import com.lu4p.fokuslauncher.data.repository.AppRepository
+import com.lu4p.fokuslauncher.media.MediaNotificationHelper
+import com.lu4p.fokuslauncher.notification.NotificationIndicatorRepository
 import com.lu4p.fokuslauncher.ui.components.MinimalIcons
 import com.lu4p.fokuslauncher.utils.DotSearchParsed
 import com.lu4p.fokuslauncher.utils.DotSearchSyntax
@@ -90,7 +94,13 @@ data class AppDrawerUiState(
          * When true with [drawerAppSortMode] CUSTOM and sidebar layout, the list shows drag handles and
          * can be reordered. Cleared when the drawer closes, search filters, or CUSTOM layout is unavailable.
          */
-        val drawerReorderSessionActive: Boolean = false
+        val drawerReorderSessionActive: Boolean = false,
+        /** True when the preference is on and notification listener access is granted. */
+        val showNotificationIndicators: Boolean = false,
+        val notificationIndicatorStyle: NotificationIndicatorStyle =
+                NotificationIndicatorStyle.DOT,
+        val notificationIndicatorColor: Int = NotificationIndicatorColorPreset.DEFAULT.argb,
+        val appsWithNotifications: Set<String> = emptySet(),
 )
 
 sealed interface DrawerEvent {
@@ -242,6 +252,7 @@ constructor(
         private val appRepository: AppRepository,
         private val privateSpaceManager: PrivateSpaceManager,
         private val preferencesManager: PreferencesManager,
+        private val notificationIndicatorRepository: NotificationIndicatorRepository,
         @param:Named("DrawerComputation") private val drawerComputationDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -313,9 +324,58 @@ constructor(
         observeProfileDisplayNameOverrides()
         observeLauncherAppearance()
         observeDrawerSearchAutoLaunch()
+        observeNotificationIndicators()
         refreshPrivateSpaceState()
         observePrivateSpaceChanges()
         scheduleDrawerCachePrewarm()
+    }
+
+    override fun onCleared() {
+        notificationIndicatorRepository.setTrackingEnabled(
+                NotificationIndicatorRepository.CONSUMER_DRAWER,
+                false,
+        )
+        super.onCleared()
+    }
+
+    private fun observeNotificationIndicators() {
+        viewModelScope.launch {
+            combine(
+                            preferencesManager.showNotificationIndicatorsFlow,
+                            preferencesManager.notificationIndicatorStyleFlow,
+                            preferencesManager.notificationIndicatorColorFlow,
+                            notificationIndicatorRepository.appsWithNotifications,
+                    ) { showPref, style, colorArgb, appsWithNotifications ->
+                        val enabled =
+                                showPref && MediaNotificationHelper.isListenerEnabled(context)
+                        notificationIndicatorRepository.setTrackingEnabled(
+                                NotificationIndicatorRepository.CONSUMER_DRAWER,
+                                enabled,
+                        )
+                        _uiState.update {
+                            it.copy(
+                                    showNotificationIndicators = enabled,
+                                    notificationIndicatorStyle = style,
+                                    notificationIndicatorColor = colorArgb,
+                                    appsWithNotifications = appsWithNotifications,
+                            )
+                        }
+                    }
+                    .collect {}
+        }
+    }
+
+    /** Re-checks listener access when the drawer is shown so revoked permission hides indicators. */
+    fun refreshNotificationIndicators() {
+        viewModelScope.launch {
+            val showPref = preferencesManager.showNotificationIndicatorsFlow.first()
+            val enabled = showPref && MediaNotificationHelper.isListenerEnabled(context)
+            notificationIndicatorRepository.setTrackingEnabled(
+                    NotificationIndicatorRepository.CONSUMER_DRAWER,
+                    enabled,
+            )
+            _uiState.update { it.copy(showNotificationIndicators = enabled) }
+        }
     }
 
     private fun observeLauncherAppearance() {

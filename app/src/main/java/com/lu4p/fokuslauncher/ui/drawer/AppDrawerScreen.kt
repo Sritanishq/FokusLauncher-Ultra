@@ -4,12 +4,13 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -60,6 +61,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.focus.FocusRequester
@@ -85,9 +87,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lu4p.fokuslauncher.R
 import com.lu4p.fokuslauncher.data.model.AppInfo
 import com.lu4p.fokuslauncher.data.model.DrawerAppSortMode
+import com.lu4p.fokuslauncher.data.model.NotificationIndicatorColorPreset
+import com.lu4p.fokuslauncher.data.model.NotificationIndicatorStyle
 import com.lu4p.fokuslauncher.data.model.ReservedCategoryNames
 import com.lu4p.fokuslauncher.data.model.appListStableKey
 import com.lu4p.fokuslauncher.data.model.appMetadataKey
+import com.lu4p.fokuslauncher.data.model.drawerOpenCountKey
 import com.lu4p.fokuslauncher.utils.DotSearchSyntax
 import com.lu4p.fokuslauncher.ui.components.CategoryChips
 import com.lu4p.fokuslauncher.ui.components.CategoryIconPickerDialog
@@ -235,6 +240,10 @@ private fun LazyItemScope.ReorderableDrawerAppListItem(
         dragHandleModifier: Modifier,
         onLaunchWhenNotReordering: () -> Unit,
         onLongPressWhenNotReordering: () -> Unit,
+        showNotificationIndicators: Boolean = false,
+        notificationIndicatorStyle: NotificationIndicatorStyle = NotificationIndicatorStyle.DOT,
+        notificationIndicatorColor: Int = NotificationIndicatorColorPreset.DEFAULT.argb,
+        appsWithNotifications: Set<String> = emptySet(),
 ) {
     ReorderableDrawerAppRow(
             allowCustomDragReorder = allowCustomDragReorder,
@@ -242,6 +251,9 @@ private fun LazyItemScope.ReorderableDrawerAppListItem(
             offsetY = offsetY,
             dragHandleModifier = dragHandleModifier,
     ) {
+        val hasNotification =
+                showNotificationIndicators &&
+                        drawerOpenCountKey(app.packageName, app.userHandle) in appsWithNotifications
         AppListItem(
                 app = app,
                 onClick = {
@@ -252,6 +264,11 @@ private fun LazyItemScope.ReorderableDrawerAppListItem(
                     if (!allowCustomDragReorder) onLongPressWhenNotReordering()
                 },
                 modifier = Modifier.weight(1f),
+                hasNotification = hasNotification,
+                notificationIndicatorStyle = notificationIndicatorStyle,
+                notificationIndicatorColor = notificationIndicatorColor,
+                reserveNotificationDotSlot = showNotificationIndicators &&
+                        notificationIndicatorStyle == NotificationIndicatorStyle.DOT,
         )
     }
 }
@@ -521,6 +538,10 @@ private fun DrawerAppListColumn(
                                 onAppClick(launchTargetFromAppInfo(app))
                             },
                             onLongPressWhenNotReordering = { onAppLongPress(app) },
+                            showNotificationIndicators = uiState.showNotificationIndicators,
+                            notificationIndicatorStyle = uiState.notificationIndicatorStyle,
+                            notificationIndicatorColor = uiState.notificationIndicatorColor,
+                            appsWithNotifications = uiState.appsWithNotifications,
                     )
                 }
             }
@@ -608,6 +629,10 @@ private fun DrawerAppListColumn(
                             }
                         },
                         onLongPressWhenNotReordering = { onAppLongPress(app) },
+                        showNotificationIndicators = uiState.showNotificationIndicators,
+                        notificationIndicatorStyle = uiState.notificationIndicatorStyle,
+                        notificationIndicatorColor = uiState.notificationIndicatorColor,
+                        appsWithNotifications = uiState.appsWithNotifications,
                 )
             }
         }
@@ -684,6 +709,7 @@ fun AppDrawerScreen(
     // Close the drawer after an app is auto-launched from search
     LaunchedEffect(Unit) {
         viewModel.resetSearchStateIfNeeded()
+        viewModel.refreshNotificationIndicators()
         viewModel.events.collect { event ->
             if (event is DrawerEvent.AutoLaunch) closeAndResetAfterLaunch()
         }
@@ -1263,12 +1289,26 @@ fun AppListItem(
         app: AppInfo,
         onClick: () -> Unit,
         onLongClick: () -> Unit,
-        modifier: Modifier = Modifier
+        modifier: Modifier = Modifier,
+        hasNotification: Boolean = false,
+        notificationIndicatorStyle: NotificationIndicatorStyle = NotificationIndicatorStyle.DOT,
+        notificationIndicatorColor: Int = NotificationIndicatorColorPreset.DEFAULT.argb,
+        reserveNotificationDotSlot: Boolean = false,
 ) {
-    Text(
-            text = app.label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onBackground,
+    val textColor = MaterialTheme.colorScheme.onBackground
+    val indicatorColor = Color(notificationIndicatorColor)
+    val labelColor =
+            if (hasNotification &&
+                            notificationIndicatorStyle == NotificationIndicatorStyle.COLORED_LABEL
+            ) {
+                indicatorColor
+            } else {
+                textColor
+            }
+    val showDot =
+            hasNotification && notificationIndicatorStyle == NotificationIndicatorStyle.DOT
+    Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier =
                     modifier.fillMaxWidth()
                             .combinedClickableWithSystemSound(
@@ -1276,6 +1316,23 @@ fun AppListItem(
                                     onLongClick = onLongClick
                             )
                             .padding(horizontal = 24.dp, vertical = 12.dp)
-                            .testTag("app_item_${app.packageName}")
-    )
+                            .testTag("app_item_${app.packageName}"),
+    ) {
+        if (reserveNotificationDotSlot || showDot) {
+            Box(
+                    modifier =
+                            Modifier.size(8.dp)
+                                    .background(
+                                            color = if (showDot) textColor else Color.Transparent,
+                                            shape = CircleShape,
+                                    ),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+        Text(
+                text = app.label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = labelColor,
+        )
+    }
 }

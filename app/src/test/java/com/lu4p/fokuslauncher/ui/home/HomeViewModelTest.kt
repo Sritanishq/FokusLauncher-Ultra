@@ -29,6 +29,7 @@ import com.lu4p.fokuslauncher.data.repository.AppRepository
 import com.lu4p.fokuslauncher.data.repository.RemovedApp
 import com.lu4p.fokuslauncher.data.repository.WeatherRepository
 import com.lu4p.fokuslauncher.media.MediaRepository
+import com.lu4p.fokuslauncher.notification.NotificationIndicatorRepository
 import com.lu4p.fokuslauncher.usage.ScreenTimeRepository
 import com.lu4p.fokuslauncher.utils.LockScreenHelper
 import io.mockk.coEvery
@@ -73,6 +74,7 @@ class HomeViewModelTest {
     private lateinit var weatherRepository: WeatherRepository
     private lateinit var mediaRepository: MediaRepository
     private lateinit var screenTimeRepository: ScreenTimeRepository
+    private lateinit var notificationIndicatorRepository: NotificationIndicatorRepository
     private lateinit var removedPackages: MutableSharedFlow<RemovedApp>
     private val testDispatcher = StandardTestDispatcher()
     private var originalLocale: Locale = Locale.getDefault()
@@ -96,7 +98,10 @@ class HomeViewModelTest {
         weatherRepository = mockk(relaxed = true)
         mediaRepository = mockk(relaxed = true)
         screenTimeRepository = mockk(relaxed = true)
+        notificationIndicatorRepository = mockk(relaxed = true)
         every { mediaRepository.state } returns MutableStateFlow(null)
+        every { notificationIndicatorRepository.appsWithNotifications } returns
+                MutableStateFlow(emptySet())
         every { screenTimeRepository.queryLast24HoursTotalMs() } returns 0L
         removedPackages = MutableSharedFlow(extraBufferCapacity = 1)
 
@@ -126,6 +131,11 @@ class HomeViewModelTest {
         every { preferencesManager.showHomeBatteryFlow } returns flowOf(true)
         every { preferencesManager.showHomeMediaFlow } returns flowOf(false)
         every { preferencesManager.showHomeScreenTimeFlow } returns flowOf(false)
+        every { preferencesManager.showNotificationIndicatorsFlow } returns flowOf(false)
+        every { preferencesManager.notificationIndicatorStyleFlow } returns
+                flowOf(com.lu4p.fokuslauncher.data.model.NotificationIndicatorStyle.DOT)
+        every { preferencesManager.notificationIndicatorColorFlow } returns
+                flowOf(com.lu4p.fokuslauncher.data.model.NotificationIndicatorColorPreset.DEFAULT.argb)
         every { preferencesManager.homeDateFormatStyleFlow } returns
                 flowOf(HomeDateFormatStyle.SYSTEM_DEFAULT)
         every { preferencesManager.doubleTapEmptyLockFlow } returns flowOf(false)
@@ -148,11 +158,23 @@ class HomeViewModelTest {
     }
 
     private fun createViewModel() = HomeViewModel(
-        context, appRepository, preferencesManager, weatherRepository, mediaRepository, screenTimeRepository
+        context,
+        appRepository,
+        preferencesManager,
+        weatherRepository,
+        mediaRepository,
+        screenTimeRepository,
+        notificationIndicatorRepository,
     )
 
     private fun createViewModel(withContext: Context) = HomeViewModel(
-        withContext, appRepository, preferencesManager, weatherRepository, mediaRepository, screenTimeRepository
+        withContext,
+        appRepository,
+        preferencesManager,
+        weatherRepository,
+        mediaRepository,
+        screenTimeRepository,
+        notificationIndicatorRepository,
     )
 
     /**
@@ -638,7 +660,6 @@ class HomeViewModelTest {
         assertEquals("Chrome Work Custom", viewModel.editFavorites.value.single().label)
         assertEquals("42", viewModel.editFavorites.value.single().profileKey)
     }
-
 
     @Test
     fun `toggleAppOnHomeScreen removes work profile app with componentName`() {

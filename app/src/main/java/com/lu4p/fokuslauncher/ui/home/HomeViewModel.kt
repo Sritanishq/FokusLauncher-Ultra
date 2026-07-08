@@ -32,6 +32,8 @@ import com.lu4p.fokuslauncher.data.model.HOST_APP_METADATA_SENTINEL
 import com.lu4p.fokuslauncher.data.model.metadataSettingsStableKey
 import com.lu4p.fokuslauncher.data.model.HomeDateFormatStyle
 import com.lu4p.fokuslauncher.data.model.HomeAlignment
+import com.lu4p.fokuslauncher.data.model.NotificationIndicatorColorPreset
+import com.lu4p.fokuslauncher.data.model.NotificationIndicatorStyle
 import com.lu4p.fokuslauncher.data.model.PhotoWallpaperOutlineWidthDp
 import com.lu4p.fokuslauncher.data.model.LauncherFontScale
 import com.lu4p.fokuslauncher.data.model.HomeShortcut
@@ -45,6 +47,7 @@ import com.lu4p.fokuslauncher.data.repository.WeatherRepository
 import com.lu4p.fokuslauncher.media.MediaNotificationHelper
 import com.lu4p.fokuslauncher.media.MediaPlaybackUiState
 import com.lu4p.fokuslauncher.media.MediaRepository
+import com.lu4p.fokuslauncher.notification.NotificationIndicatorRepository
 import com.lu4p.fokuslauncher.usage.DigitalWellbeingHelper
 import com.lu4p.fokuslauncher.usage.ScreenTimeRepository
 import com.lu4p.fokuslauncher.usage.UsageStatsHelper
@@ -100,6 +103,14 @@ data class HomeUiState(
     val photoWallpaperOutlineWidthDp: Float = PhotoWallpaperOutlineWidthDp.DEFAULT,
 )
 
+data class HomeNotificationIndicatorUiState(
+    /** True when the preference is on and notification listener access is granted. */
+    val enabled: Boolean = false,
+    val style: NotificationIndicatorStyle = NotificationIndicatorStyle.DOT,
+    val colorArgb: Int = NotificationIndicatorColorPreset.DEFAULT.argb,
+    val appsWithNotifications: Set<String> = emptySet(),
+)
+
 data class HomeClockUiState(
     val currentTime: String = "",
     val currentDate: String = "",
@@ -144,6 +155,7 @@ class HomeViewModel @Inject constructor(
     private val weatherRepository: WeatherRepository,
     private val mediaRepository: MediaRepository,
     private val screenTimeRepository: ScreenTimeRepository,
+    private val notificationIndicatorRepository: NotificationIndicatorRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -164,6 +176,10 @@ class HomeViewModel @Inject constructor(
 
     private val _screenTimeUiState = MutableStateFlow(HomeScreenTimeUiState())
     val screenTimeUiState: StateFlow<HomeScreenTimeUiState> = _screenTimeUiState.asStateFlow()
+
+    private val _notificationIndicatorUiState = MutableStateFlow(HomeNotificationIndicatorUiState())
+    val notificationIndicatorUiState: StateFlow<HomeNotificationIndicatorUiState> =
+            _notificationIndicatorUiState.asStateFlow()
 
     /** Serializes home app-list refresh so concurrent loads cannot race and prune favorites. */
     private val installedAppsRefreshMutex = Mutex()
@@ -311,6 +327,7 @@ class HomeViewModel @Inject constructor(
         observeHomeWidgetItemPreferences()
         observeWeatherRefreshTriggers()
         observeMedia()
+        observeNotificationIndicators()
         observeScreenTime()
         observeDoubleTapEmptyLock()
         checkDefaultLauncher()
@@ -332,6 +349,10 @@ class HomeViewModel @Inject constructor(
         weatherTickerJob?.cancel()
         screenTimeTickerJob?.cancel()
         mediaRepository.stop()
+        notificationIndicatorRepository.setTrackingEnabled(
+                NotificationIndicatorRepository.CONSUMER_HOME,
+                false,
+        )
         super.onCleared()
     }
 
@@ -895,6 +916,46 @@ class HomeViewModel @Inject constructor(
     fun mediaLike() = mediaRepository.invokeLikeAction()
 
     fun mediaSave() = mediaRepository.invokeSaveAction()
+
+    // ── Notification indicators ─────────────────────────────────────
+
+    private var notificationIndicatorsPrefEnabled = false
+
+    private fun observeNotificationIndicators() {
+        observeFlow(preferencesManager.showNotificationIndicatorsFlow) { enabled ->
+            notificationIndicatorsPrefEnabled = enabled
+            applyNotificationIndicatorTracking()
+        }
+        observeFlow(preferencesManager.notificationIndicatorStyleFlow) { style ->
+            _notificationIndicatorUiState.value =
+                    _notificationIndicatorUiState.value.copy(style = style)
+        }
+        observeFlow(preferencesManager.notificationIndicatorColorFlow) { colorArgb ->
+            _notificationIndicatorUiState.value =
+                    _notificationIndicatorUiState.value.copy(colorArgb = colorArgb)
+        }
+        observeFlow(notificationIndicatorRepository.appsWithNotifications) { keys ->
+            _notificationIndicatorUiState.value =
+                    _notificationIndicatorUiState.value.copy(appsWithNotifications = keys)
+        }
+    }
+
+    private fun applyNotificationIndicatorTracking() {
+        val enabled =
+                notificationIndicatorsPrefEnabled &&
+                        MediaNotificationHelper.isListenerEnabled(context)
+        _notificationIndicatorUiState.value =
+                _notificationIndicatorUiState.value.copy(enabled = enabled)
+        notificationIndicatorRepository.setTrackingEnabled(
+                NotificationIndicatorRepository.CONSUMER_HOME,
+                enabled,
+        )
+    }
+
+    /** Re-checks listener access on resume so revoked permission disables indicators. */
+    fun refreshNotificationIndicators() {
+        applyNotificationIndicatorTracking()
+    }
 
     // ── Screen time widget ──────────────────────────────────────────
 

@@ -24,6 +24,8 @@ import com.lu4p.fokuslauncher.data.model.decodeWidgetTapTarget
 import com.lu4p.fokuslauncher.data.model.encodeWidgetTapTarget
 import com.lu4p.fokuslauncher.data.model.WidgetTapTarget
 import com.lu4p.fokuslauncher.data.model.HomeAlignment
+import com.lu4p.fokuslauncher.data.model.NotificationIndicatorColorPreset
+import com.lu4p.fokuslauncher.data.model.NotificationIndicatorStyle
 import com.lu4p.fokuslauncher.data.model.TemperatureUnit
 import com.lu4p.fokuslauncher.data.model.LauncherAppearance
 import com.lu4p.fokuslauncher.data.model.LauncherVisualStyle
@@ -94,6 +96,13 @@ class PreferencesManager @Inject constructor(@param:ApplicationContext private v
         /** Opt-in media widget; off by default since no apps are registered yet. */
         private val SHOW_HOME_MEDIA_KEY = booleanPreferencesKey("show_home_media")
         private val SHOW_HOME_SCREEN_TIME_KEY = booleanPreferencesKey("show_home_screen_time")
+        /** Opt-in notification status indicators on home favorites and the app drawer. */
+        private val SHOW_NOTIFICATION_INDICATORS_KEY =
+                booleanPreferencesKey("show_notification_indicators")
+        private val NOTIFICATION_INDICATOR_STYLE_KEY =
+                stringPreferencesKey("notification_indicator_style")
+        private val NOTIFICATION_INDICATOR_COLOR_KEY =
+                intPreferencesKey("notification_indicator_color")
         /** Package names of media apps the user registered for the widget to connect to. */
         /** Vertical category sidebar in the drawer instead of chips + search bar. */
         private val DRAWER_SIDEBAR_CATEGORIES_KEY =
@@ -396,6 +405,25 @@ class PreferencesManager @Inject constructor(@param:ApplicationContext private v
 
     val showHomeScreenTimeFlow: Flow<Boolean> = prefFlow(SHOW_HOME_SCREEN_TIME_KEY, false)
     suspend fun setShowHomeScreenTime(show: Boolean) = setPref(SHOW_HOME_SCREEN_TIME_KEY, show)
+
+    val showNotificationIndicatorsFlow: Flow<Boolean> =
+            prefFlow(SHOW_NOTIFICATION_INDICATORS_KEY, false)
+    suspend fun setShowNotificationIndicators(show: Boolean) =
+            setPref(SHOW_NOTIFICATION_INDICATORS_KEY, show)
+
+    val notificationIndicatorStyleFlow: Flow<NotificationIndicatorStyle> =
+            context.fokusLauncherPreferencesDataStore.data.map { prefs ->
+                NotificationIndicatorStyle.fromString(prefs[NOTIFICATION_INDICATOR_STYLE_KEY])
+            }
+
+    suspend fun setNotificationIndicatorStyle(style: NotificationIndicatorStyle) =
+            setPref(NOTIFICATION_INDICATOR_STYLE_KEY, style.name)
+
+    val notificationIndicatorColorFlow: Flow<Int> =
+            prefFlow(NOTIFICATION_INDICATOR_COLOR_KEY, NotificationIndicatorColorPreset.DEFAULT.argb)
+
+    suspend fun setNotificationIndicatorColor(argb: Int) =
+            setPref(NOTIFICATION_INDICATOR_COLOR_KEY, argb)
 
     val homeWidgetVisibilityFlow: Flow<HomeWidgetVisibility> =
             combine(
