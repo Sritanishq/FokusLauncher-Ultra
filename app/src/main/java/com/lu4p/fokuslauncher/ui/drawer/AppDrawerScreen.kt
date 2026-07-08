@@ -847,6 +847,9 @@ fun AppDrawerContent(
     var hasScrolledDown by remember { mutableStateOf(false) }
     // Tracks prior at-top so sidebar search auto-close only runs on scroll-away, not on icon reopen.
     var wasAtTop by remember { mutableStateOf(true) }
+    // True only after the user drags the list. Layout/IME/filter relayout can briefly report
+    // !isAtTop (e.g. backspacing the last search character) — that must not dismiss the keyboard.
+    var userDraggedList by remember { mutableStateOf(false) }
 
     // Sidebar icon search: focus when opened (independent of list scroll position).
     LaunchedEffect(showSearch, useSidebarCategoryDrawer) {
@@ -860,10 +863,13 @@ fun AppDrawerContent(
     // Chip layout: auto-focus at top / dismiss keyboard when scrolling away.
     // Sidebar: hide empty search only on scroll-away (not when reopening while already scrolled).
     LaunchedEffect(isAtTop, useSidebarCategoryDrawer, uiState.drawerScrollToTopAutoKeyboard) {
+        if (isAtTop) {
+            userDraggedList = false
+        }
         if (useSidebarCategoryDrawer) {
             if (!isAtTop) {
                 hasScrolledDown = true
-                if (wasAtTop && showSearch && uiState.searchQuery.isBlank()) {
+                if (wasAtTop && showSearch && uiState.searchQuery.isBlank() && userDraggedList) {
                     keyboardController?.hide()
                     focusManager.clearFocus(force = true)
                     showSearch = false
@@ -880,7 +886,7 @@ fun AppDrawerContent(
             keyboardController?.show()
         } else if (!isAtTop) {
             hasScrolledDown = true
-            if (uiState.searchQuery.isBlank()) {
+            if (uiState.searchQuery.isBlank() && userDraggedList) {
                 keyboardController?.hide()
                 focusManager.clearFocus(force = true)
             }
@@ -891,6 +897,10 @@ fun AppDrawerContent(
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput && available.y < 0) {
+                    // Finger scrolling the list away from the top.
+                    userDraggedList = true
+                }
                 if (source == NestedScrollSource.UserInput && available.y > 0 && !listState.canScrollBackward) {
                     // Immediate response for pull-down gesture at the boundary
                     if (uiState.drawerScrollToTopAutoKeyboard && !useSidebarCategoryDrawer) {
