@@ -344,4 +344,25 @@
     <string name="settings_font_import_failed_unreadable">Impossibile leggere il file</string>
     <string name="settings_font_import_failed_extension">Sono supportati solo i file .ttf</string>
     <string name="settings_font_import_failed_invalid">Il file non è un carattere TrueType valido</string>
+    <string name="cd_restore_archived_app">Ripristina app archiviata</string>
+    <string name="toast_digital_wellbeing_launch_failed">Impossibile avviare Benessere digitale</string>
+    <string name="settings_show_home_media">Mostra controlli multimediali</string>
+    <string name="settings_show_home_screen_time_subtitle_grant_access">Richiede l\'accesso all\'utilizzo: concedilo nelle impostazioni di sistema</string>
+    <string name="media_notification_listener_label">In riproduzione Fokus</string>
+    <string name="media_previous_track">Brano precedente</string>
+    <string name="media_play">Riproduci</string>
+    <string name="media_pause">Pausa</string>
+    <string name="settings_section_archived_apps">App archiviate</string>
+    <string name="settings_no_archived_apps">Nessuna app archiviata</string>
+    <string name="visual_style_gold">Oro</string>
+    <string name="settings_show_home_media_subtitle_grant_access">Richiede l\'accesso alle notifiche: concedilo nelle impostazioni di sistema</string>
+    <string name="settings_show_home_screen_time">Mostra tempo di utilizzo</string>
+    <string name="settings_show_home_screen_time_subtitle">Tempo di utilizzo nelle ultime 24 ore</string>
+    <string name="media_buffering">Caricamento</string>
+    <string name="media_next_track">Brano successivo</string>
+    <string name="media_like">Mi piace</string>
+    <string name="media_unlike">Non mi piace</string>
+    <string name="media_save">Salva nella libreria</string>
+    <string name="media_unsave">Rimuovi dalla libreria</string>
+    <string name="settings_show_home_media_subtitle">In riproduzione con controlli di trasporto quando l\'audio è attivo</string>
 </resources>
