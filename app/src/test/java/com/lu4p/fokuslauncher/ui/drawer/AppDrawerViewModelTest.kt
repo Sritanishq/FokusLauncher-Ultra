@@ -573,6 +573,52 @@ class AppDrawerViewModelTest {
         )
     }
 
+
+    @Test
+    fun `addToHomeScreen stores work profile app with profileKey`() {
+        val workHandle = mockk<UserHandle>()
+        every { workHandle.hashCode() } returns 42
+        val app =
+                AppInfo(
+                        packageName = "com.lu4p.chrome",
+                        label = "Chrome Work",
+                        icon = null,
+                        userHandle = workHandle,
+                        componentName = mockk<ComponentName>(relaxed = true),
+                )
+
+        viewModel.addToHomeScreen(app)
+
+        val favorite = favoritesFlow.value.single()
+        assertEquals("Chrome Work", favorite.label)
+        assertEquals("com.lu4p.chrome", favorite.packageName)
+        assertEquals("42", favorite.profileKey)
+        assertEquals(
+                favoriteAppStableKey(favorite),
+                viewModel.uiState.value.favoriteAppKeys.single(),
+        )
+    }
+
+    @Test
+    fun `addToHomeScreen does not duplicate work profile app`() {
+        val workHandle = mockk<UserHandle>()
+        every { workHandle.hashCode() } returns 42
+        val app =
+                AppInfo(
+                        packageName = "com.lu4p.chrome",
+                        label = "Chrome Work",
+                        icon = null,
+                        userHandle = workHandle,
+                        componentName = mockk<ComponentName>(relaxed = true),
+                )
+
+        viewModel.addToHomeScreen(app)
+        viewModel.addToHomeScreen(app)
+
+        assertEquals(1, favoritesFlow.value.size)
+        assertEquals("42", favoritesFlow.value.single().profileKey)
+    }
+
     @Test
     fun `launchTarget private app delegates to private space manager`() {
         val component = ComponentName("com.private.app", "MainActivity")

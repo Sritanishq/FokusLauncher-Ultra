@@ -87,6 +87,7 @@ import com.lu4p.fokuslauncher.data.model.AppInfo
 import com.lu4p.fokuslauncher.data.model.DrawerAppSortMode
 import com.lu4p.fokuslauncher.data.model.ReservedCategoryNames
 import com.lu4p.fokuslauncher.data.model.appListStableKey
+import com.lu4p.fokuslauncher.data.model.appMetadataKey
 import com.lu4p.fokuslauncher.utils.DotSearchSyntax
 import com.lu4p.fokuslauncher.ui.components.CategoryChips
 import com.lu4p.fokuslauncher.ui.components.CategoryIconPickerDialog
@@ -736,7 +737,7 @@ fun AppDrawerScreen(
                 onUninstall = viewModel::uninstallApp,
                 onRemoveShortcut = { viewModel.removeLauncherShortcut(it) },
                 isOnHomeScreen =
-                        appListStableKey(app) in uiState.favoriteAppKeys
+                        appMetadataKey(app) in uiState.favoriteAppKeys
         )
     }
 

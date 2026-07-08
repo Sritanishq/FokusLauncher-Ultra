@@ -23,7 +23,6 @@ import com.lu4p.fokuslauncher.data.model.overlayCustomName
 import com.lu4p.fokuslauncher.data.model.resolveAppCategory
 import com.lu4p.fokuslauncher.data.model.dynamicCategoryExtras
 import com.lu4p.fokuslauncher.data.model.appProfileKey
-import com.lu4p.fokuslauncher.data.model.appListStableKey
 import com.lu4p.fokuslauncher.data.model.drawerOpenCountKey
 import com.lu4p.fokuslauncher.data.model.favoriteAppStableKey
 import com.lu4p.fokuslauncher.data.repository.AppRepository
@@ -1251,11 +1250,6 @@ constructor(
 
     fun addToHomeScreen(app: AppInfo) {
         viewModelScope.launch {
-            if (app.userHandle != null) return@launch
-            val current = preferencesManager.favoritesFlow.first().toMutableList()
-            if (current.any { favoriteAppStableKey(it) == appListStableKey(app) }) {
-                return@launch
-            }
             val target =
                     app.launcherShortcutId?.let {
                         ShortcutTarget.LauncherShortcut(
@@ -1263,8 +1257,7 @@ constructor(
                                 shortcutId = it,
                         )
                     }
-            current.add(
-                    0,
+            val favorite =
                     FavoriteApp(
                             label = app.label,
                             packageName = app.packageName,
@@ -1275,9 +1268,13 @@ constructor(
                                     } else {
                                         ShortcutTarget.encode(target)
                                     },
-                            profileKey = appProfileKey(app.userHandle)
+                            profileKey = appProfileKey(app.userHandle),
                     )
-            )
+            val current = preferencesManager.favoritesFlow.first().toMutableList()
+            if (current.any { favoriteAppStableKey(it) == favoriteAppStableKey(favorite) }) {
+                return@launch
+            }
+            current.add(0, favorite)
             preferencesManager.setFavorites(current)
         }
     }

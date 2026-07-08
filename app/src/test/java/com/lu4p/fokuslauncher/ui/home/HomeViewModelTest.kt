@@ -2,6 +2,7 @@ package com.lu4p.fokuslauncher.ui.home
 
 import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
@@ -636,6 +637,31 @@ class HomeViewModelTest {
 
         assertEquals("Chrome Work Custom", viewModel.editFavorites.value.single().label)
         assertEquals("42", viewModel.editFavorites.value.single().profileKey)
+    }
+
+
+    @Test
+    fun `toggleAppOnHomeScreen removes work profile app with componentName`() {
+        val workHandle = mockk<android.os.UserHandle>()
+        every { workHandle.hashCode() } returns 42
+        val workApp =
+                AppInfo(
+                        packageName = "com.lu4p.chrome",
+                        label = "Chrome Work",
+                        icon = null,
+                        userHandle = workHandle,
+                        componentName = ComponentName("com.lu4p.chrome", "MainActivity"),
+                )
+
+        val viewModel = createViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.toggleAppOnHomeScreen(workApp)
+        assertEquals(1, viewModel.editFavorites.value.size)
+        assertEquals("42", viewModel.editFavorites.value.single().profileKey)
+
+        viewModel.toggleAppOnHomeScreen(workApp)
+        assertTrue(viewModel.editFavorites.value.isEmpty())
     }
 
     @Test

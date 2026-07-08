@@ -27,7 +27,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lu4p.fokuslauncher.R
 import com.lu4p.fokuslauncher.data.model.AppInfo
 import com.lu4p.fokuslauncher.data.model.FavoriteApp
-import com.lu4p.fokuslauncher.data.model.appListStableKey
+import com.lu4p.fokuslauncher.data.model.appMetadataKey
 import com.lu4p.fokuslauncher.data.model.favoriteAppStableKey
 import com.lu4p.fokuslauncher.ui.components.EditorScreenScaffold
 import com.lu4p.fokuslauncher.ui.drawer.DrawerProfileSectionUi
@@ -77,7 +77,7 @@ fun EditHomeAppsScreen(
         val uncheckedApps =
                 remember(allApps, checkedKeys, searchQuery) {
                     allApps
-                            .filter { appListStableKey(it) !in checkedKeys }
+                            .filter { appMetadataKey(it) !in checkedKeys }
                             .let { list ->
                                 if (searchQuery.isBlank()) list
                                 else list.filter { it.label.containsNormalizedSearch(searchQuery) }
@@ -136,7 +136,7 @@ private fun ReorderableEditHomeAppsList(
             val fav = editFavorites[index]
             val matchingApp =
                     remember(fav, allApps) {
-                        allApps.find { favoriteAppStableKey(fav) == appListStableKey(it) }
+                        allApps.find { favoriteAppStableKey(fav) == appMetadataKey(it) }
                     }
             val profileBadge =
                     remember(fav, matchingApp, profileDisplayNameOverrides, context) {
@@ -169,7 +169,7 @@ private fun ReorderableEditHomeAppsList(
                         checked = true,
                         onCheckedChange =
                                 rememberBooleanChangeWithSystemSound {
-                                    allApps.find { favoriteAppStableKey(fav) == appListStableKey(it) }
+                                    allApps.find { favoriteAppStableKey(fav) == appMetadataKey(it) }
                                             ?.let { onToggle(it) }
                                             ?: onRemoveFavorite(fav)
                                 },

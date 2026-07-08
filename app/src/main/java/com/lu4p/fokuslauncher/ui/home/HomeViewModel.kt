@@ -24,7 +24,6 @@ import com.lu4p.fokuslauncher.data.model.AppInfo
 import com.lu4p.fokuslauncher.data.model.dynamicCategoryExtras
 import com.lu4p.fokuslauncher.data.model.AppShortcutAction
 import com.lu4p.fokuslauncher.data.model.FavoriteApp
-import com.lu4p.fokuslauncher.data.model.appListStableKey
 import com.lu4p.fokuslauncher.data.model.appMetadataKey
 import com.lu4p.fokuslauncher.data.model.appProfileKey
 import com.lu4p.fokuslauncher.data.model.drawerOpenCountKey
@@ -417,7 +416,7 @@ class HomeViewModel @Inject constructor(
             return false
         }
         applyInstalledAppsSnapshot(apps)
-        val installedAppKeys = apps.map { appListStableKey(it) }.toSet()
+        val installedAppKeys = apps.map { appMetadataKey(it) }.toSet()
         val archivedAppKeys = _archivedAppKeys.value
         val currentFavorites = rawFavorites.value
         val nonSentinel = currentFavorites.filterNot { it.isPhoneFavoriteSentinel() }
@@ -495,7 +494,7 @@ class HomeViewModel @Inject constructor(
 
     fun toggleAppOnHomeScreen(app: AppInfo) {
         val current = _editFavorites.value.toMutableList()
-        val stableKey = appListStableKey(app)
+        val stableKey = appMetadataKey(app)
         current.toggleItem(
                 predicate = { favoriteAppStableKey(it) == stableKey },
                 factory = {
