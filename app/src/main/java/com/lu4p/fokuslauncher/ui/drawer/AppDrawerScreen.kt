@@ -658,9 +658,12 @@ fun AppDrawerScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val view = LocalView.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val onCloseUpdated = rememberUpdatedState(onClose)
-    val closeAndReset = remember(viewModel) {
+    val closeAndReset = remember(viewModel, keyboardController) {
         {
+            // Start IME hide with the drawer exit, not after AnimatedVisibility tears down.
+            keyboardController?.hide()
             viewModel.resetSearchState()
             onCloseUpdated.value()
         }
@@ -668,8 +671,9 @@ fun AppDrawerScreen(
     // Defer closing until after startActivity is processed so the drawer exit animation does not
     // run in the same frame as the launch handoff (smoother transition, avoids perceived "close
     // before open").
-    val closeAndResetAfterLaunch = remember(view, viewModel) {
+    val closeAndResetAfterLaunch = remember(view, viewModel, keyboardController) {
         {
+            keyboardController?.hide()
             view.post {
                 viewModel.resetSearchState()
                 onCloseUpdated.value()
@@ -812,6 +816,10 @@ fun AppDrawerContent(
     val anyProfileAppsVisible =
             uiState.filteredProfileSections.any { it.apps.isNotEmpty() }
     val closeWithFocusReset: () -> Unit = {
+        // Hide IME at close start so it animates with the drawer slide-out, not after.
+        // clearFocus alone is async on some devices/OEMs and only drops the keyboard when
+        // AnimatedVisibility tears down the still-composed search field.
+        keyboardController?.hide()
         focusManager.clearFocus(force = true)
         onClose()
     }

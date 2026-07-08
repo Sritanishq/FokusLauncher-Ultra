@@ -38,6 +38,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Modifier
@@ -45,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.activity.compose.LocalActivity
 import androidx.core.net.toUri
 import androidx.compose.animation.AnimatedContentScope
@@ -150,6 +152,8 @@ fun FokusNavGraph(
     var showDrawer by remember { mutableStateOf(false) }
     var widgetPageSide by remember { mutableStateOf<SwipeSide?>(null) }
     val horizontalSwipeActive = remember { mutableStateOf(false) }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val keyboardControllerUpdated = rememberUpdatedState(keyboardController)
 
     val componentActivity = LocalActivity.current as ComponentActivity
     val launcherHomeCoordinator =
@@ -157,6 +161,8 @@ fun FokusNavGraph(
 
     LaunchedEffect(launcherHomeCoordinator, navController) {
         launcherHomeCoordinator.goHomeRequests.collect {
+            // Hide IME with the drawer exit; goHome bypasses AppDrawer close helpers.
+            keyboardControllerUpdated.value?.hide()
             showDrawer = false
             widgetPageSide = null
             navController.popBackStack(Routes.HOME, inclusive = false)
@@ -609,6 +615,7 @@ fun FokusNavGraph(
                     viewModel = settingsVm,
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToHome = {
+                        keyboardController?.hide()
                         showDrawer = false
                         navController.popBackStack(Routes.HOME, inclusive = false)
                     },
