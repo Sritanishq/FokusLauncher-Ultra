@@ -12,11 +12,14 @@ import com.lu4p.fokuslauncher.data.model.appProfileKey
 import com.lu4p.fokuslauncher.data.repository.AppRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class DrawerDotSearchSettingsUiState(
         val defaultTarget: DotSearchTargetPreference = DotSearchTargetPreference(),
@@ -47,19 +50,25 @@ constructor(
                             preferencesManager.profileDisplayNameOverridesFlow,
                             appRepository.getInstalledAppsVersion()
                     ) { defaultTarget, aliases, profileNames, _ ->
-                        val apps = appRepository.getInstalledApps()
-                        DrawerDotSearchSettingsUiState(
-                                defaultTarget = defaultTarget,
-                                aliases = aliases,
-                                allApps = apps,
-                                allShortcutActions =
-                                        appRepository.getAllShortcutActionsOnBackground(),
-                                webSearchCapableApps =
-                                        appRepository.filterAppsForDotSearchAppPicker(apps),
-                                profileDisplayNameOverrides = profileNames,
-                        )
+                        Triple(defaultTarget, aliases, profileNames)
                     }
-                    .collect { _uiState.value = it }
+                    .collectLatest { (defaultTarget, aliases, profileNames) ->
+                        val apps = appRepository.getInstalledAppsOnBackground()
+                        val shortcuts = appRepository.getAllShortcutActionsOnBackground()
+                        val webSearchApps =
+                                withContext(Dispatchers.IO) {
+                                    appRepository.filterAppsForDotSearchAppPicker(apps)
+                                }
+                        _uiState.value =
+                                DrawerDotSearchSettingsUiState(
+                                        defaultTarget = defaultTarget,
+                                        aliases = aliases,
+                                        allApps = apps,
+                                        allShortcutActions = shortcuts,
+                                        webSearchCapableApps = webSearchApps,
+                                        profileDisplayNameOverrides = profileNames,
+                                )
+                    }
         }
     }
 

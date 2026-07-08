@@ -121,7 +121,6 @@ fun HomeScreen(
     }
 
     OnResumeEffect(lifecycleOwner, viewModel, alsoRunIfAlreadyResumed = true) {
-        viewModel.refreshInstalledApps(forceReload = false)
         viewModel.recheckDefaultLauncher()
         viewModel.refreshDoubleTapLockEffective()
         viewModel.refreshWeather()

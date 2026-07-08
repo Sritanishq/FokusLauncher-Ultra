@@ -135,7 +135,7 @@ class PrivateSpaceManager @Inject constructor(
                 AppInfo(
                     packageName = activityInfo.applicationInfo.packageName,
                     label = activityInfo.label.toString(),
-                    icon = activityInfo.getBadgedIcon(0),
+                    icon = null,
                     userHandle = profile,
                     componentName = activityInfo.componentName,
                     isArchived = isArchived,

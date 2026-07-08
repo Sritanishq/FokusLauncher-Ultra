@@ -714,13 +714,18 @@ class PreferencesManager @Inject constructor(@param:ApplicationContext private v
     /**
      * Updates [HOME_USES_PHOTO_WALLPAPER_KEY] from the live system wallpaper so existing image
      * wallpapers are detected without going through Fokus picker/onboarding.
+     * No-ops when the stored flag already matches, avoiding DataStore writes and theme
+     * recomposition on every resume (#168).
      */
     suspend fun syncHomeUsesPhotoWallpaperFromSystemWallpaper() {
-        when (WallpaperHelper.homeWallpaperEffectivelyBlackOrNull(context)) {
-            null -> Unit
-            true -> setHomeUsesPhotoWallpaper(usesPhoto = false)
-            false -> setHomeUsesPhotoWallpaper(usesPhoto = true)
-        }
+        val classification =
+                WallpaperHelper.homeWallpaperEffectivelyBlackOrNull(context) ?: return
+        val wantsPhoto = !classification
+        val currentPhoto =
+                context.fokusLauncherPreferencesDataStore.data.first()[HOME_USES_PHOTO_WALLPAPER_KEY] ==
+                        true
+        if (wantsPhoto == currentPhoto) return
+        setHomeUsesPhotoWallpaper(wantsPhoto)
     }
 
     // --- Launcher text (system fonts + scale) ---

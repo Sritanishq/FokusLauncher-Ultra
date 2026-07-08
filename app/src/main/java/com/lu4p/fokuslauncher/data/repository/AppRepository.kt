@@ -323,19 +323,13 @@ constructor(
                             packageName
                         }
                 val isPrimary = user == myUser
-                val icon =
-                        try {
-                            info.getBadgedIcon(0)
-                        } catch (_: Exception) {
-                            null
-                        }
                 rawEntries.add(
                         RawLauncherEntry(
                                 packageName = packageName,
                                 rawLabel = rawLabel,
                                 user = user,
                                 isPrimary = isPrimary,
-                                icon = icon,
+                                icon = null,
                                 category = inferCategoryFromApplicationInfo(info.applicationInfo),
                                 componentName = info.componentName,
                                 isArchived = isArchivedLauncherActivity(info),
@@ -499,12 +493,7 @@ constructor(
                     AppInfo(
                             packageName = ownerApp.packageName,
                             label = label,
-                            icon =
-                                    try {
-                                        launcherApps.getShortcutIconDrawable(shortcut, 0)
-                                    } catch (_: Exception) {
-                                        ownerApp.icon
-                                    },
+                            icon = null,
                             category = ownerApp.category,
                             userHandle = ownerApp.userHandle,
                             componentName = ownerApp.componentName,
@@ -566,12 +555,7 @@ constructor(
                     AppInfo(
                             packageName = packageName,
                             label = label,
-                            icon =
-                                    try {
-                                        resolveInfo.loadIcon(pm)
-                                    } catch (_: Exception) {
-                                        null
-                                    },
+                            icon = null,
                             category =
                                     inferCategoryFromApplicationInfo(
                                             resolveInfo.activityInfo.applicationInfo
