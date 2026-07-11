@@ -45,6 +45,7 @@ fun EditorDragHandleReorderIcon(
         onReorder: (from: Int, to: Int) -> Unit,
         onReset: () -> Unit,
         vararg pointerInputKeys: Any?,
+        onDragGestureStart: () -> Unit = {},
 ) {
     LauncherIcon(
             imageVector = Icons.Default.DragHandle,
@@ -53,12 +54,13 @@ fun EditorDragHandleReorderIcon(
             iconSize = 24.dp,
             modifier =
                     Modifier.verticalReorderDragHandle(
-                            reorderState,
-                            index,
-                            lastIndex,
-                            onReorder,
-                            onReset,
-                            *pointerInputKeys,
+                            state = reorderState,
+                            index = index,
+                            lastIndex = lastIndex,
+                            onReorder = onReorder,
+                            onReset = onReset,
+                            pointerInputKeys = pointerInputKeys,
+                            onDragGestureStart = onDragGestureStart,
                     ),
     )
 }

@@ -12,12 +12,19 @@ import com.lu4p.fokuslauncher.data.model.AppInfo
 import com.lu4p.fokuslauncher.data.model.DrawerAppSortMode
 import com.lu4p.fokuslauncher.data.model.AppShortcutAction
 import com.lu4p.fokuslauncher.data.model.FavoriteApp
+import com.lu4p.fokuslauncher.data.model.CountdownEvent
+import com.lu4p.fokuslauncher.data.model.COUNTDOWN_TITLE_MAX_LENGTH
 import com.lu4p.fokuslauncher.data.model.HomeDateFormatStyle
+import com.lu4p.fokuslauncher.data.model.HomeExtraWidgetAddType
+import com.lu4p.fokuslauncher.data.model.HomeExtraWidgetEntry
 import com.lu4p.fokuslauncher.data.model.HomeAlignment
 import com.lu4p.fokuslauncher.data.model.NotificationIndicatorColorPreset
 import com.lu4p.fokuslauncher.data.model.NotificationIndicatorStyle
 import com.lu4p.fokuslauncher.data.model.TemperatureUnit
 import com.lu4p.fokuslauncher.data.model.ReservedCategoryNames
+import com.lu4p.fokuslauncher.data.model.WORLD_CLOCK_LABEL_MAX_LENGTH
+import com.lu4p.fokuslauncher.data.model.WorldClockCity
+import com.lu4p.fokuslauncher.data.model.defaultLabelForTimeZoneId
 import com.lu4p.fokuslauncher.data.model.metadataSettingsStableKey
 import com.lu4p.fokuslauncher.data.model.appListStableKey
 import com.lu4p.fokuslauncher.data.model.appProfileKey
@@ -34,6 +41,9 @@ import com.lu4p.fokuslauncher.data.model.PhotoWallpaperOutlineWidthDp
 import com.lu4p.fokuslauncher.data.model.HomeShortcut
 import com.lu4p.fokuslauncher.data.model.ShortcutTarget
 import com.lu4p.fokuslauncher.data.model.WidgetTapTarget
+import java.util.Calendar
+import java.util.UUID
+import java.util.TimeZone
 import com.lu4p.fokuslauncher.data.repository.AppRepository
 import com.lu4p.fokuslauncher.data.util.AppLocaleHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -87,9 +97,13 @@ data class SettingsUiState(
         val showHomeClock: Boolean = true,
         val showHomeDate: Boolean = true,
         val showHomeWeather: Boolean = true,
+        val showWorldClockWeather: Boolean = false,
         val showHomeBattery: Boolean = true,
         val showHomeMedia: Boolean = false,
         val showHomeScreenTime: Boolean = false,
+        val homeExtraWidgets: List<HomeExtraWidgetEntry> = emptyList(),
+        val worldClockCities: List<WorldClockCity> = emptyList(),
+        val countdownEvents: List<CountdownEvent> = emptyList(),
         val showNotificationIndicators: Boolean = false,
         val notificationIndicatorStyle: NotificationIndicatorStyle =
                 NotificationIndicatorStyle.DOT,
@@ -269,14 +283,39 @@ constructor(
                             preferencesManager.homeWidgetVisibilityFlow,
                             mediaAndIndicatorsFlow,
                     ) { vis, mediaAndIndicators -> vis to mediaAndIndicators }
-            val homeWidgetItemsFlow =
+            val visibilityMediaExtrasFlow =
                     combine(
                             visibilityAndMediaFlow,
+                            preferencesManager.homeExtraWidgetsFlow,
+                    ) { visMedia, extras -> visMedia to extras }
+            val extrasContentFlow =
+                    combine(
+                            preferencesManager.worldClockCitiesFlow,
+                            preferencesManager.countdownEventsFlow,
+                    ) { cities, events -> cities to events }
+            val tapsAndFormatFlow =
+                    combine(
                             preferencesManager.preferredClockTapFlow,
                             preferencesManager.preferredCalendarTapFlow,
                             preferencesManager.homeDateFormatStyleFlow,
                             preferencesManager.temperatureUnitFlow,
-                    ) { (vis, mediaAndIndicators), clk, cal, fmt, tempUnit ->
+                            preferencesManager.showWorldClockWeatherFlow,
+                    ) { clk, cal, fmt, tempUnit, showWorldClockWeather ->
+                        HomeWidgetTapsAndFormat(
+                                clk,
+                                cal,
+                                fmt,
+                                tempUnit,
+                                showWorldClockWeather,
+                        )
+                    }
+            val homeWidgetItemsFlow =
+                    combine(
+                            visibilityMediaExtrasFlow,
+                            extrasContentFlow,
+                            tapsAndFormatFlow,
+                    ) { (visMedia, extras), (cities, events), taps ->
+                        val (vis, mediaAndIndicators) = visMedia
                         HomeWidgetItemSettings(
                                 showClock = vis.showClock,
                                 showDate = vis.showDate,
@@ -290,10 +329,14 @@ constructor(
                                         mediaAndIndicators.notificationIndicatorStyle,
                                 notificationIndicatorColor =
                                         mediaAndIndicators.notificationIndicatorColor,
-                                preferredClockTap = clk,
-                                preferredCalendarTap = cal,
-                                homeDateFormatStyle = fmt,
-                                temperatureUnit = tempUnit,
+                                homeExtraWidgets = extras,
+                                worldClockCities = cities,
+                                countdownEvents = events,
+                                preferredClockTap = taps.preferredClockTap,
+                                preferredCalendarTap = taps.preferredCalendarTap,
+                                homeDateFormatStyle = taps.homeDateFormatStyle,
+                                temperatureUnit = taps.temperatureUnit,
+                                showWorldClockWeather = taps.showWorldClockWeather,
                         )
                     }
             val drawerPrefsFlow =
@@ -486,9 +529,13 @@ constructor(
                         showHomeClock = homeWidgetItems.showClock,
                         showHomeDate = homeWidgetItems.showDate,
                         showHomeWeather = homeWidgetItems.showWeather,
+                        showWorldClockWeather = homeWidgetItems.showWorldClockWeather,
                         showHomeBattery = homeWidgetItems.showBattery,
                         showHomeMedia = homeWidgetItems.showMedia,
                         showHomeScreenTime = homeWidgetItems.showScreenTime,
+                        homeExtraWidgets = homeWidgetItems.homeExtraWidgets,
+                        worldClockCities = homeWidgetItems.worldClockCities,
+                        countdownEvents = homeWidgetItems.countdownEvents,
                         showNotificationIndicators = homeWidgetItems.showNotificationIndicators,
                         notificationIndicatorStyle = homeWidgetItems.notificationIndicatorStyle,
                         notificationIndicatorColor = homeWidgetItems.notificationIndicatorColor,
@@ -533,6 +580,14 @@ constructor(
             val notificationIndicatorColor: Int,
     )
 
+    private data class HomeWidgetTapsAndFormat(
+            val preferredClockTap: WidgetTapTarget?,
+            val preferredCalendarTap: WidgetTapTarget?,
+            val homeDateFormatStyle: HomeDateFormatStyle,
+            val temperatureUnit: TemperatureUnit,
+            val showWorldClockWeather: Boolean,
+    )
+
     private data class HomeWidgetItemSettings(
             val showClock: Boolean,
             val showDate: Boolean,
@@ -543,10 +598,14 @@ constructor(
             val showNotificationIndicators: Boolean,
             val notificationIndicatorStyle: NotificationIndicatorStyle,
             val notificationIndicatorColor: Int,
+            val homeExtraWidgets: List<HomeExtraWidgetEntry>,
+            val worldClockCities: List<WorldClockCity>,
+            val countdownEvents: List<CountdownEvent>,
             val preferredClockTap: WidgetTapTarget?,
             val preferredCalendarTap: WidgetTapTarget?,
             val homeDateFormatStyle: HomeDateFormatStyle,
-            val temperatureUnit: TemperatureUnit
+            val temperatureUnit: TemperatureUnit,
+            val showWorldClockWeather: Boolean,
     )
 
     private data class FavoritesBase(
@@ -878,11 +937,90 @@ constructor(
 
     fun setShowHomeWeather(show: Boolean) = launchPreferences { setShowHomeWeather(show) }
 
+    fun setShowWorldClockWeather(show: Boolean) =
+            launchPreferences { setShowWorldClockWeather(show) }
+
     fun setShowHomeBattery(show: Boolean) = launchPreferences { setShowHomeBattery(show) }
 
     fun setShowHomeMedia(show: Boolean) = launchPreferences { setShowHomeMedia(show) }
 
     fun setShowHomeScreenTime(show: Boolean) = launchPreferences { setShowHomeScreenTime(show) }
+
+    fun addHomeExtraWidget(type: HomeExtraWidgetAddType) {
+        when (type) {
+            HomeExtraWidgetAddType.WORLD_CLOCK -> {
+                val zone = TimeZone.getDefault().id
+                val city =
+                        WorldClockCity(
+                                id = UUID.randomUUID().toString(),
+                                label =
+                                        defaultLabelForTimeZoneId(zone)
+                                                .take(WORLD_CLOCK_LABEL_MAX_LENGTH),
+                                timeZoneId = zone,
+                                position = uiState.value.worldClockCities.size,
+                        )
+                viewModelScope.launch { preferencesManager.addHomeExtraWorldClock(city) }
+            }
+            HomeExtraWidgetAddType.COUNTDOWN -> {
+                val cal = Calendar.getInstance()
+                cal.add(Calendar.DAY_OF_YEAR, 7)
+                cal.set(Calendar.SECOND, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+                val event =
+                        CountdownEvent(
+                                id = UUID.randomUUID().toString(),
+                                title = "",
+                                targetEpochMillis = cal.timeInMillis,
+                        )
+                // Title filled in the edit dialog; store a placeholder until saved.
+                val placeholder =
+                        event.copy(
+                                title =
+                                        context.getString(R.string.settings_countdown_event)
+                                                .take(COUNTDOWN_TITLE_MAX_LENGTH),
+                        )
+                viewModelScope.launch { preferencesManager.addHomeExtraCountdown(placeholder) }
+            }
+        }
+    }
+
+    fun removeHomeExtraWidget(entry: HomeExtraWidgetEntry) =
+            launchPreferences { removeHomeExtraWidget(entry) }
+
+    fun reorderHomeExtraWidget(from: Int, to: Int) =
+            launchPreferences { reorderHomeExtraWidget(from, to) }
+
+    fun setHomeExtraWidgets(entries: List<HomeExtraWidgetEntry>) =
+            launchPreferences { setHomeExtraWidgets(entries) }
+
+    fun updateWorldClockCity(id: String, label: String, timeZoneId: String): Boolean {
+        val trimmedLabel = label.trim().take(WORLD_CLOCK_LABEL_MAX_LENGTH)
+        val zone = timeZoneId.trim()
+        if (trimmedLabel.isEmpty() || zone.isEmpty()) return false
+        val updated =
+                uiState.value.worldClockCities.map { city ->
+                    if (city.id == id) city.copy(label = trimmedLabel, timeZoneId = zone)
+                    else city
+                }
+        viewModelScope.launch { preferencesManager.setWorldClockCities(updated) }
+        return true
+    }
+
+    fun saveCountdownEvent(id: String, title: String, targetEpochMillis: Long): Boolean {
+        val trimmed = title.trim().take(COUNTDOWN_TITLE_MAX_LENGTH)
+        if (trimmed.isEmpty()) return false
+        val updated =
+                uiState.value.countdownEvents.map { event ->
+                    if (event.id == id) {
+                        event.copy(title = trimmed, targetEpochMillis = targetEpochMillis)
+                    } else {
+                        event
+                    }
+                }
+        if (updated.none { it.id == id }) return false
+        viewModelScope.launch { preferencesManager.setCountdownEvents(updated) }
+        return true
+    }
 
     fun setShowNotificationIndicators(show: Boolean) =
             launchPreferences { setShowNotificationIndicators(show) }

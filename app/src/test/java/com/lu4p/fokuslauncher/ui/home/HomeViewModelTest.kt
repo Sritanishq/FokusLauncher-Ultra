@@ -128,9 +128,13 @@ class HomeViewModelTest {
         every { preferencesManager.showHomeClockFlow } returns flowOf(true)
         every { preferencesManager.showHomeDateFlow } returns flowOf(true)
         every { preferencesManager.showHomeWeatherFlow } returns flowOf(true)
+        every { preferencesManager.showWorldClockWeatherFlow } returns flowOf(false)
         every { preferencesManager.showHomeBatteryFlow } returns flowOf(true)
         every { preferencesManager.showHomeMediaFlow } returns flowOf(false)
         every { preferencesManager.showHomeScreenTimeFlow } returns flowOf(false)
+        every { preferencesManager.homeExtraWidgetsFlow } returns flowOf(emptyList())
+        every { preferencesManager.worldClockCitiesFlow } returns flowOf(emptyList())
+        every { preferencesManager.countdownEventsFlow } returns flowOf(emptyList())
         every { preferencesManager.showNotificationIndicatorsFlow } returns flowOf(false)
         every { preferencesManager.notificationIndicatorStyleFlow } returns
                 flowOf(com.lu4p.fokuslauncher.data.model.NotificationIndicatorStyle.DOT)

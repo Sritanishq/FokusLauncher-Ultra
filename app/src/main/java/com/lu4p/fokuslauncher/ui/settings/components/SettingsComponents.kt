@@ -362,3 +362,14 @@ internal fun <T> SettingsDropdown(
         }
     }
 }
+
+@Composable
+fun SettingsDivider() {
+    Spacer(Modifier.height(10.dp))
+    androidx.compose.material3.HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 24.dp),
+            thickness = 0.75.dp,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.16f),
+    )
+    Spacer(Modifier.height(10.dp))
+}

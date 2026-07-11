@@ -30,14 +30,19 @@ import com.lu4p.fokuslauncher.data.model.drawerOpenCountKey
 import com.lu4p.fokuslauncher.data.model.favoriteAppStableKey
 import com.lu4p.fokuslauncher.data.model.HOST_APP_METADATA_SENTINEL
 import com.lu4p.fokuslauncher.data.model.metadataSettingsStableKey
+import com.lu4p.fokuslauncher.data.model.CountdownEvent
 import com.lu4p.fokuslauncher.data.model.HomeDateFormatStyle
 import com.lu4p.fokuslauncher.data.model.HomeAlignment
+import com.lu4p.fokuslauncher.data.model.HomeExtraWidgetEntry
+import com.lu4p.fokuslauncher.data.model.homeExtraWorldClockCount
 import com.lu4p.fokuslauncher.data.model.NotificationIndicatorColorPreset
 import com.lu4p.fokuslauncher.data.model.NotificationIndicatorStyle
 import com.lu4p.fokuslauncher.data.model.PhotoWallpaperOutlineWidthDp
 import com.lu4p.fokuslauncher.data.model.LauncherFontScale
 import com.lu4p.fokuslauncher.data.model.HomeShortcut
 import com.lu4p.fokuslauncher.data.model.ReservedCategoryNames
+import com.lu4p.fokuslauncher.data.model.WorldClockCity
+import com.lu4p.fokuslauncher.data.model.ianaLeafLabel
 import com.lu4p.fokuslauncher.data.model.ShortcutTarget
 import com.lu4p.fokuslauncher.data.model.WeatherData
 import com.lu4p.fokuslauncher.data.model.WidgetTapTarget
@@ -147,6 +152,26 @@ data class HomeScreenTimeUiState(
         get() = enabled && durationText != null
 }
 
+data class HomeWorldClockUiState(
+        val citiesById: Map<String, WorldClockCityUi> = emptyMap(),
+)
+
+data class CountdownEventUi(
+        val id: String,
+        val title: String,
+        val remainingText: String,
+)
+
+data class HomeCountdownUiState(
+        val eventsById: Map<String, CountdownEventUi> = emptyMap(),
+)
+
+/** One visible chip in the ordered home extras row. */
+sealed class HomeExtraChipUi {
+    data class WorldClock(val city: WorldClockCityUi) : HomeExtraChipUi()
+    data class Countdown(val title: String, val remainingText: String) : HomeExtraChipUi()
+}
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     @param:ApplicationContext private val context: Context,
@@ -176,6 +201,22 @@ class HomeViewModel @Inject constructor(
 
     private val _screenTimeUiState = MutableStateFlow(HomeScreenTimeUiState())
     val screenTimeUiState: StateFlow<HomeScreenTimeUiState> = _screenTimeUiState.asStateFlow()
+
+    private val _worldClockUiState = MutableStateFlow(HomeWorldClockUiState())
+    val worldClockUiState: StateFlow<HomeWorldClockUiState> = _worldClockUiState.asStateFlow()
+
+    private val _countdownUiState = MutableStateFlow(HomeCountdownUiState())
+    val countdownUiState: StateFlow<HomeCountdownUiState> = _countdownUiState.asStateFlow()
+
+    private val _homeExtraWidgets = MutableStateFlow<List<HomeExtraWidgetEntry>>(emptyList())
+    /** Ordered extra chips (each city + countdown) for the shared home row. */
+    val homeExtraWidgets: StateFlow<List<HomeExtraWidgetEntry>> = _homeExtraWidgets.asStateFlow()
+
+    private var worldClockCities: List<WorldClockCity> = emptyList()
+    private var countdownEvents: List<CountdownEvent> = emptyList()
+    private var showWorldClockWeather: Boolean = false
+    private var worldClockWeatherTexts: Map<String, String> = emptyMap()
+    private var worldClockWeatherFetchJob: Job? = null
 
     private val _notificationIndicatorUiState = MutableStateFlow(HomeNotificationIndicatorUiState())
     val notificationIndicatorUiState: StateFlow<HomeNotificationIndicatorUiState> =
@@ -326,9 +367,13 @@ class HomeViewModel @Inject constructor(
         observeTemperatureUnit()
         observeHomeWidgetItemPreferences()
         observeWeatherRefreshTriggers()
+        observeWorldClockWeatherPreference()
         observeMedia()
         observeNotificationIndicators()
         observeScreenTime()
+        observeHomeExtraWidgets()
+        observeWorldClock()
+        observeCountdown()
         observeDoubleTapEmptyLock()
         checkDefaultLauncher()
         refreshInstalledApps(includeShortcuts = true)
@@ -347,6 +392,7 @@ class HomeViewModel @Inject constructor(
             }
         }
         weatherTickerJob?.cancel()
+        worldClockWeatherFetchJob?.cancel()
         screenTimeTickerJob?.cancel()
         mediaRepository.stop()
         notificationIndicatorRepository.setTrackingEnabled(
@@ -742,6 +788,8 @@ class HomeViewModel @Inject constructor(
                 if (updated != current) {
                     _clockUiState.value = updated
                 }
+                refreshWorldClockTimes(now.time)
+                refreshCountdownRemaining(now.time)
                 delay(1_000)
             }
         }
@@ -801,6 +849,7 @@ class HomeViewModel @Inject constructor(
         weatherTickerJob = viewModelScope.launch(Dispatchers.IO) {
             while (true) {
                 fetchWeatherOnce()
+                fetchWorldClockWeatherOnce()
                 delay(30 * 60 * 1000L)
             }
         }
@@ -809,6 +858,15 @@ class HomeViewModel @Inject constructor(
     private fun stopWeatherTicker() {
         weatherTickerJob?.cancel()
         weatherTickerJob = null
+    }
+
+    private fun syncWeatherTicker() {
+        val needTicker = _uiState.value.showHomeWeather || showWorldClockWeather
+        if (needTicker) {
+            startWeatherTicker()
+        } else {
+            stopWeatherTicker()
+        }
     }
 
     private fun observeHomeAlignment() {
@@ -853,6 +911,9 @@ class HomeViewModel @Inject constructor(
     private fun observeTemperatureUnit() {
         observeFlow(preferencesManager.temperatureUnitFlow) { unit ->
             _temperatureUnit.value = unit
+            if (showWorldClockWeather) {
+                refreshWorldClockWeather()
+            }
         }
     }
 
@@ -872,11 +933,23 @@ class HomeViewModel @Inject constructor(
         observeFlow(preferencesManager.showHomeWeatherFlow.distinctUntilChanged()) { showWeather ->
             if (showWeather) {
                 refreshWeather()
-                startWeatherTicker()
             } else {
-                stopWeatherTicker()
                 applyWeatherUiState(hiddenWeatherState())
             }
+            syncWeatherTicker()
+        }
+    }
+
+    private fun observeWorldClockWeatherPreference() {
+        observeFlow(preferencesManager.showWorldClockWeatherFlow.distinctUntilChanged()) { show ->
+            showWorldClockWeather = show
+            if (show) {
+                refreshWorldClockWeather()
+            } else {
+                worldClockWeatherTexts = emptyMap()
+                refreshWorldClockTimes()
+            }
+            syncWeatherTicker()
         }
     }
 
@@ -1021,6 +1094,138 @@ class HomeViewModel @Inject constructor(
     private fun stopScreenTimeTicker() {
         screenTimeTickerJob?.cancel()
         screenTimeTickerJob = null
+    }
+
+    private fun observeHomeExtraWidgets() {
+        observeFlow(preferencesManager.homeExtraWidgetsFlow) { entries ->
+            _homeExtraWidgets.value = entries
+            refreshWorldClockTimes()
+            refreshCountdownRemaining()
+        }
+    }
+
+    private fun observeWorldClock() {
+        observeFlow(preferencesManager.worldClockCitiesFlow) { cities ->
+            worldClockCities = cities
+            refreshWorldClockTimes()
+            if (showWorldClockWeather) {
+                refreshWorldClockWeather()
+            }
+        }
+    }
+
+    private fun refreshWorldClockTimes(nowMillis: Long = System.currentTimeMillis()) {
+        if (worldClockCities.isEmpty() || homeExtraWorldClockCount(_homeExtraWidgets.value) == 0) {
+            val cleared = HomeWorldClockUiState()
+            if (_worldClockUiState.value != cleared) {
+                _worldClockUiState.value = cleared
+            }
+            return
+        }
+        val weatherById = if (showWorldClockWeather) worldClockWeatherTexts else emptyMap()
+        val formatted =
+                formatWorldClockCities(context, worldClockCities, nowMillis).map { city ->
+                    city.copy(weatherText = weatherById[city.id])
+                }
+        val updated = HomeWorldClockUiState(citiesById = formatted.associateBy { it.id })
+        if (updated != _worldClockUiState.value) {
+            _worldClockUiState.value = updated
+        }
+    }
+
+    private fun refreshWorldClockWeather() {
+        worldClockWeatherFetchJob?.cancel()
+        worldClockWeatherFetchJob =
+                viewModelScope.launch(Dispatchers.IO) { fetchWorldClockWeatherOnce() }
+    }
+
+    private suspend fun fetchWorldClockWeatherOnce() {
+        if (!showWorldClockWeather || worldClockCities.isEmpty()) {
+            if (worldClockWeatherTexts.isNotEmpty()) {
+                worldClockWeatherTexts = emptyMap()
+                refreshWorldClockTimes()
+            }
+            return
+        }
+        val useFahrenheit = TemperatureUnitHelper.useFahrenheit(context, _temperatureUnit.value)
+        val suffix = if (useFahrenheit) "\u00B0F" else "\u00B0C"
+        val next = linkedMapOf<String, String>()
+        for (city in worldClockCities) {
+            val place =
+                    city.label.trim().ifBlank { ianaLeafLabel(city.timeZoneId) }
+            val weather =
+                    weatherRepository.getWeatherForPlace(
+                            place,
+                            useFahrenheit = useFahrenheit,
+                    )
+            if (weather != null) {
+                next[city.id] = "${weather.temperature}$suffix"
+            }
+        }
+        worldClockWeatherTexts = next
+        refreshWorldClockTimes()
+    }
+
+    private fun observeCountdown() {
+        observeFlow(preferencesManager.countdownEventsFlow) { events ->
+            countdownEvents = events
+            refreshCountdownRemaining()
+        }
+    }
+
+    private fun refreshCountdownRemaining(nowMillis: Long = System.currentTimeMillis()) {
+        if (countdownEvents.isEmpty()) {
+            val cleared = HomeCountdownUiState()
+            if (_countdownUiState.value != cleared) {
+                _countdownUiState.value = cleared
+            }
+            return
+        }
+        val nowLabel = context.getString(R.string.home_countdown_now)
+        val pastLabel = context.getString(R.string.home_countdown_past)
+        val formatted =
+                countdownEvents.associate { event ->
+                    val remainingMillis =
+                            millisUntilCountdown(event.targetEpochMillis, nowMillis)
+                    val remaining =
+                            formatCountdownRemaining(
+                                    remainingMillis = remainingMillis,
+                                    nowLabel = nowLabel,
+                                    pastLabel = pastLabel,
+                            )
+                    event.id to
+                            CountdownEventUi(
+                                    id = event.id,
+                                    title = event.title,
+                                    remainingText = remaining,
+                            )
+                }
+        val updated = HomeCountdownUiState(eventsById = formatted)
+        if (updated != _countdownUiState.value) {
+            _countdownUiState.value = updated
+        }
+    }
+
+    /** Resolves ordered extras into visible chips for the home row. */
+    fun resolveHomeExtraChips(
+            entries: List<HomeExtraWidgetEntry> = _homeExtraWidgets.value,
+            worldClock: HomeWorldClockUiState = _worldClockUiState.value,
+            countdown: HomeCountdownUiState = _countdownUiState.value,
+    ): List<HomeExtraChipUi> {
+        return entries.mapNotNull { entry ->
+            when (entry) {
+                is HomeExtraWidgetEntry.WorldClock ->
+                        worldClock.citiesById[entry.cityId]?.let { HomeExtraChipUi.WorldClock(it) }
+                is HomeExtraWidgetEntry.Countdown ->
+                        countdown.eventsById[entry.eventId]?.let { event ->
+                            if (event.title.isNotBlank() && event.remainingText.isNotBlank()) {
+                                HomeExtraChipUi.Countdown(event.title, event.remainingText)
+                            } else {
+                                null
+                            }
+                        }
+            }
+        }
     }
 
     private fun observeCategoryOptions() {

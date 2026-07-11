@@ -60,9 +60,11 @@ import com.lu4p.fokuslauncher.ui.settings.ShortcutActionPickerDialog
 import com.lu4p.fokuslauncher.ui.drawer.profileOriginLabelForFavorite
 import com.lu4p.fokuslauncher.data.model.FavoriteApp
 import com.lu4p.fokuslauncher.data.model.HomeAlignment
+import com.lu4p.fokuslauncher.data.model.HomeExtraWidgetEntry
 import com.lu4p.fokuslauncher.data.model.HomeShortcut
 import com.lu4p.fokuslauncher.data.model.NotificationIndicatorStyle
 import com.lu4p.fokuslauncher.data.model.drawerOpenCountKey
+import com.lu4p.fokuslauncher.ui.components.HomeExtraChipsRow
 import com.lu4p.fokuslauncher.ui.components.ClockWidget
 import com.lu4p.fokuslauncher.ui.components.DateBatteryRow
 import com.lu4p.fokuslauncher.ui.components.FokusBottomSheet
@@ -96,6 +98,9 @@ fun HomeScreen(
     val weatherUiState by viewModel.weatherUiState.collectAsStateWithLifecycle()
     val mediaUiState by viewModel.mediaUiState.collectAsStateWithLifecycle()
     val screenTimeUiState by viewModel.screenTimeUiState.collectAsStateWithLifecycle()
+    val worldClockUiState by viewModel.worldClockUiState.collectAsStateWithLifecycle()
+    val countdownUiState by viewModel.countdownUiState.collectAsStateWithLifecycle()
+    val homeExtraWidgets by viewModel.homeExtraWidgets.collectAsStateWithLifecycle()
     val notificationIndicatorUiState by
             viewModel.notificationIndicatorUiState.collectAsStateWithLifecycle()
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
@@ -141,6 +146,9 @@ fun HomeScreen(
             weatherUiState = weatherUiState,
             mediaUiState = mediaUiState,
             screenTimeUiState = screenTimeUiState,
+            worldClockUiState = worldClockUiState,
+            countdownUiState = countdownUiState,
+            homeExtraWidgets = homeExtraWidgets,
             notificationIndicatorUiState = notificationIndicatorUiState,
             favorites = favorites,
             installedApps = allInstalledApps,
@@ -240,6 +248,9 @@ fun HomeScreenContent(
     modifier: Modifier = Modifier,
     mediaUiState: HomeMediaUiState = HomeMediaUiState(),
     screenTimeUiState: HomeScreenTimeUiState = HomeScreenTimeUiState(),
+    worldClockUiState: HomeWorldClockUiState = HomeWorldClockUiState(),
+    countdownUiState: HomeCountdownUiState = HomeCountdownUiState(),
+    homeExtraWidgets: List<HomeExtraWidgetEntry> = emptyList(),
     notificationIndicatorUiState: HomeNotificationIndicatorUiState =
             HomeNotificationIndicatorUiState(),
     installedApps: List<AppInfo> = emptyList(),
@@ -297,6 +308,9 @@ fun HomeScreenContent(
             weatherUiState = weatherUiState,
             mediaUiState = mediaUiState,
             screenTimeUiState = screenTimeUiState,
+            worldClockUiState = worldClockUiState,
+            countdownUiState = countdownUiState,
+            homeExtraWidgets = homeExtraWidgets,
             onClockClick = onClockClick,
                 onDateClick = onDateClick,
                 onWeatherClick = onWeatherClick,
@@ -426,6 +440,9 @@ private fun HomeWidgetsSection(
     weatherUiState: HomeWeatherUiState,
     mediaUiState: HomeMediaUiState,
     screenTimeUiState: HomeScreenTimeUiState,
+    worldClockUiState: HomeWorldClockUiState,
+    countdownUiState: HomeCountdownUiState,
+    homeExtraWidgets: List<HomeExtraWidgetEntry>,
     onClockClick: () -> Unit,
     onDateClick: () -> Unit,
     onWeatherClick: () -> Unit,
@@ -504,6 +521,51 @@ private fun HomeWidgetsSection(
         )
     }
 
+    val belowHeaderTopPad =
+            if (showDateOrBattery || showClock || showWeather || screenTimeUiState.showWidget) {
+                8.dp
+            } else {
+                0.dp
+            }
+    // A bit of air under the date line so extras don't sit flush against it.
+    val extrasTopPad = if (showDateOrBattery) 8.dp else belowHeaderTopPad
+    var nextTopPad = belowHeaderTopPad
+
+    val extraChips =
+            remember(homeExtraWidgets, worldClockUiState, countdownUiState) {
+                homeExtraWidgets.mapNotNull { entry ->
+                    when (entry) {
+                        is HomeExtraWidgetEntry.WorldClock ->
+                                worldClockUiState.citiesById[entry.cityId]?.let {
+                                    HomeExtraChipUi.WorldClock(it)
+                                }
+                        is HomeExtraWidgetEntry.Countdown ->
+                                countdownUiState.eventsById[entry.eventId]?.let { event ->
+                                    if (event.title.isNotBlank() &&
+                                                    event.remainingText.isNotBlank()
+                                    ) {
+                                        HomeExtraChipUi.Countdown(
+                                                event.title,
+                                                event.remainingText,
+                                        )
+                                    } else {
+                                        null
+                                    }
+                                }
+                    }
+                }
+            }
+    if (extraChips.isNotEmpty()) {
+        HomeExtraChipsRow(
+                chips = extraChips,
+                outlined = outlined,
+                modifier = Modifier.fillMaxWidth().padding(top = extrasTopPad),
+        )
+        nextTopPad = 8.dp
+    } else {
+        nextTopPad = belowHeaderTopPad
+    }
+
     val playback = mediaUiState.playback
     if (mediaUiState.showWidget && playback != null) {
         MediaWidget(
@@ -522,9 +584,7 @@ private fun HomeWidgetsSection(
                 onPlayPause = onMediaPlayPause,
                 onNext = onMediaNext,
                 onSave = onMediaSave,
-                modifier =
-                        Modifier.fillMaxWidth()
-                                .padding(top = if (showDateOrBattery || showClock) 8.dp else 0.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = nextTopPad),
         )
     }
 }

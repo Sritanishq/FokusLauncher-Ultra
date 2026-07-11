@@ -75,10 +75,14 @@ fun Modifier.verticalReorderDragHandle(
         onReorder: (from: Int, to: Int) -> Unit,
         onReset: () -> Unit,
         vararg pointerInputKeys: Any?,
+        onDragGestureStart: () -> Unit = {},
 ): Modifier =
-        this.pointerInput(*pointerInputKeys) {
+        this.pointerInput(onDragGestureStart, onReorder, onReset, *pointerInputKeys) {
             detectVerticalDragGestures(
-                    onDragStart = { state.onDragStart(index) },
+                    onDragStart = {
+                        state.onDragStart(index)
+                        onDragGestureStart()
+                    },
                     onVerticalDrag = { change, amount ->
                         change.consume()
                         state.onVerticalDrag(amount, lastIndex, onReorder)

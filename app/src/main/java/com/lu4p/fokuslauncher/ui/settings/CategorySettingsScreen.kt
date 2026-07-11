@@ -28,6 +28,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import com.lu4p.fokuslauncher.ui.util.rememberLocallyReorderedList
 import com.lu4p.fokuslauncher.ui.util.rememberVerticalSlotReorderState
 import com.lu4p.fokuslauncher.ui.util.verticalReorderDragHandle
 import com.lu4p.fokuslauncher.ui.components.FokusIconButton
@@ -90,7 +91,7 @@ fun CategorySettingsScreen(
             remember(uiState.allApps, uiState.categoryDefinitions) {
                 editableCategoriesForSettings(uiState)
             }
-    var localCategories by remember(categories) { mutableStateOf(categories) }
+    val localCategories = rememberLocallyReorderedList(categories)
     val appCounts = remember(uiState.allApps) { buildCategoryCounts(uiState) }
     var categoryIconPickerFor by remember { mutableStateOf<String?>(null) }
 
@@ -170,17 +171,13 @@ fun CategorySettingsScreen(
 
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 ReorderableCategoryList(
-                        categories = localCategories,
+                        categories = localCategories.items,
                         counts = appCounts,
                         showDrawerCategoryIcons = uiState.drawerSidebarCategories,
                         categoryDrawerIconOverrides = uiState.categoryDrawerIconOverrides,
                         onOpenCategoryIconPicker = { categoryIconPickerFor = it },
-                        onReorder = { from, to ->
-                            val reordered = localCategories.toMutableList()
-                            val item = reordered.removeAt(from)
-                            reordered.add(to, item)
-                            localCategories = reordered
-                        },
+                        onDragGestureStart = localCategories::onDragStart,
+                        onReorder = localCategories::reorder,
                         onReorderFinished = { viewModel.reorderCategories(it) },
                         onEditCategoryApps = onEditCategoryApps,
                         onDelete = { viewModel.deleteCategory(it) }
@@ -235,6 +232,7 @@ private fun ReorderableCategoryList(
         showDrawerCategoryIcons: Boolean,
         categoryDrawerIconOverrides: Map<String, String>,
         onOpenCategoryIconPicker: (String) -> Unit,
+        onDragGestureStart: () -> Unit,
         onReorder: (Int, Int) -> Unit,
         onReorderFinished: (List<String>) -> Unit,
         onEditCategoryApps: (String) -> Unit,
@@ -245,9 +243,10 @@ private fun ReorderableCategoryList(
     val currentCategories by rememberUpdatedState(categories)
     val currentOnReorder by rememberUpdatedState(onReorder)
     val currentOnReorderFinished by rememberUpdatedState(onReorderFinished)
+    val currentOnDragStart by rememberUpdatedState(onDragGestureStart)
     val onReorderReset = {
-        reorderState.reset { idx ->
-            if (idx != -1) currentOnReorderFinished(currentCategories)
+        reorderState.reset {
+            currentOnReorderFinished(currentCategories)
         }
     }
 
@@ -271,13 +270,14 @@ private fun ReorderableCategoryList(
                         iconSize = 24.dp,
                         modifier =
                                 Modifier.verticalReorderDragHandle(
-                                        reorderState,
-                                        index,
-                                        categories.lastIndex,
-                                        { from, to -> currentOnReorder(from, to) },
-                                        onReorderReset,
+                                        state = reorderState,
+                                        index = index,
+                                        lastIndex = categories.lastIndex,
+                                        onReorder = { from, to -> currentOnReorder(from, to) },
+                                        onReset = onReorderReset,
                                         category,
                                         categories.size,
+                                        onDragGestureStart = { currentOnDragStart() },
                                 ),
                 )
                 Spacer(modifier = Modifier.width(8.dp))

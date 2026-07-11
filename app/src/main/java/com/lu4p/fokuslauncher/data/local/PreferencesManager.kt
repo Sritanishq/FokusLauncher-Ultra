@@ -19,7 +19,11 @@ import com.lu4p.fokuslauncher.data.model.PhotoWallpaperOutlineWidthDp
 import com.lu4p.fokuslauncher.data.model.LauncherFontScale
 import com.lu4p.fokuslauncher.data.model.SystemCategoryKeys
 import com.lu4p.fokuslauncher.data.model.HomeDateFormatStyle
+import com.lu4p.fokuslauncher.data.model.CountdownEvent
+import com.lu4p.fokuslauncher.data.model.HomeExtraWidgetEntry
 import com.lu4p.fokuslauncher.data.model.HostedWidget
+import com.lu4p.fokuslauncher.data.model.WorldClockCity
+import com.lu4p.fokuslauncher.data.model.clampWorldClockCities
 import com.lu4p.fokuslauncher.data.model.decodeWidgetTapTarget
 import com.lu4p.fokuslauncher.data.model.encodeWidgetTapTarget
 import com.lu4p.fokuslauncher.data.model.WidgetTapTarget
@@ -32,8 +36,18 @@ import com.lu4p.fokuslauncher.data.model.LauncherVisualStyle
 import com.lu4p.fokuslauncher.data.model.DotSearchTargetMode
 import com.lu4p.fokuslauncher.data.model.DotSearchTargetPreference
 import com.lu4p.fokuslauncher.data.model.HomeShortcut
+import com.lu4p.fokuslauncher.data.model.homeExtraHasCountdown
+import com.lu4p.fokuslauncher.data.model.homeExtraWorldClockCount
+import com.lu4p.fokuslauncher.data.model.moveHomeExtraWidget
+import com.lu4p.fokuslauncher.data.model.normalizeCountdownEvents
+import com.lu4p.fokuslauncher.data.model.parseCountdownEvents
+import com.lu4p.fokuslauncher.data.model.parseHomeExtraWidgets
 import com.lu4p.fokuslauncher.data.model.parseHostedWidgets
+import com.lu4p.fokuslauncher.data.model.parseWorldClockCities
+import com.lu4p.fokuslauncher.data.model.serializeCountdownEvents
+import com.lu4p.fokuslauncher.data.model.serializeHomeExtraWidgets
 import com.lu4p.fokuslauncher.data.model.serializeHostedWidgets
+import com.lu4p.fokuslauncher.data.model.serializeWorldClockCities
 import com.lu4p.fokuslauncher.data.model.ShortcutTarget
 import com.lu4p.fokuslauncher.utils.WallpaperHelper
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -72,6 +86,10 @@ class PreferencesManager @Inject constructor(@param:ApplicationContext private v
         private val SWIPE_RIGHT_KEY = stringPreferencesKey("swipe_right_app")
         private val RIGHT_SIDE_SHORTCUTS_KEY = stringPreferencesKey("right_side_shortcuts")
         private val HOSTED_WIDGETS_KEY = stringPreferencesKey("hosted_widgets")
+        private val WORLD_CLOCK_CITIES_KEY = stringPreferencesKey("world_clock_cities")
+        private val COUNTDOWN_EVENT_KEY = stringPreferencesKey("countdown_event")
+        /** Ordered JSON array of home extra chip entries (cities + countdown). */
+        private val HOME_EXTRA_WIDGETS_KEY = stringPreferencesKey("home_extra_widgets")
         /**
          * Stored when the user has zero right-side shortcuts. Non-empty so the preference key stays
          * written: some DataStore backends omit empty strings, which made [RIGHT_SIDE_SHORTCUTS_KEY]
@@ -92,6 +110,9 @@ class PreferencesManager @Inject constructor(@param:ApplicationContext private v
         private val HOME_DATE_FORMAT_STYLE_KEY = stringPreferencesKey("home_date_format_style")
         private val TEMPERATURE_UNIT_KEY = stringPreferencesKey("temperature_unit")
         private val SHOW_HOME_WEATHER_KEY = booleanPreferencesKey("show_home_weather")
+        /** Show current weather next to each world-clock city on home. */
+        private val SHOW_WORLD_CLOCK_WEATHER_KEY =
+                booleanPreferencesKey("show_world_clock_weather")
         private val SHOW_HOME_BATTERY_KEY = booleanPreferencesKey("show_home_battery")
         /** Opt-in media widget; off by default since no apps are registered yet. */
         private val SHOW_HOME_MEDIA_KEY = booleanPreferencesKey("show_home_media")
@@ -397,6 +418,10 @@ class PreferencesManager @Inject constructor(@param:ApplicationContext private v
     val showHomeWeatherFlow: Flow<Boolean> = prefFlow(SHOW_HOME_WEATHER_KEY, true)
     suspend fun setShowHomeWeather(show: Boolean) = setPref(SHOW_HOME_WEATHER_KEY, show)
 
+    val showWorldClockWeatherFlow: Flow<Boolean> = prefFlow(SHOW_WORLD_CLOCK_WEATHER_KEY, false)
+    suspend fun setShowWorldClockWeather(show: Boolean) =
+            setPref(SHOW_WORLD_CLOCK_WEATHER_KEY, show)
+
     val showHomeBatteryFlow: Flow<Boolean> = prefFlow(SHOW_HOME_BATTERY_KEY, true)
     suspend fun setShowHomeBattery(show: Boolean) = setPref(SHOW_HOME_BATTERY_KEY, show)
 
@@ -405,6 +430,143 @@ class PreferencesManager @Inject constructor(@param:ApplicationContext private v
 
     val showHomeScreenTimeFlow: Flow<Boolean> = prefFlow(SHOW_HOME_SCREEN_TIME_KEY, false)
     suspend fun setShowHomeScreenTime(show: Boolean) = setPref(SHOW_HOME_SCREEN_TIME_KEY, show)
+
+    val worldClockCitiesFlow: Flow<List<WorldClockCity>> =
+            context.fokusLauncherPreferencesDataStore.data.map { prefs ->
+                parseWorldClockCities(prefs[WORLD_CLOCK_CITIES_KEY] ?: "")
+            }
+
+    suspend fun setWorldClockCities(cities: List<WorldClockCity>) {
+        val clamped = clampWorldClockCities(cities)
+        context.fokusLauncherPreferencesDataStore.edit { prefs ->
+            if (clamped.isEmpty()) prefs.remove(WORLD_CLOCK_CITIES_KEY)
+            else prefs[WORLD_CLOCK_CITIES_KEY] = serializeWorldClockCities(clamped)
+        }
+    }
+
+    val countdownEventsFlow: Flow<List<CountdownEvent>> =
+            context.fokusLauncherPreferencesDataStore.data.map { prefs ->
+                parseCountdownEvents(prefs[COUNTDOWN_EVENT_KEY] ?: "")
+            }
+
+    suspend fun setCountdownEvents(events: List<CountdownEvent>) {
+        context.fokusLauncherPreferencesDataStore.edit { prefs ->
+            val serialized = serializeCountdownEvents(events)
+            if (serialized.isEmpty()) prefs.remove(COUNTDOWN_EVENT_KEY)
+            else prefs[COUNTDOWN_EVENT_KEY] = serialized
+        }
+    }
+
+    /**
+     * Ordered extra home chips (each world-clock city + each countdown).
+     * Empty by default; add via Configure widgets. Legacy kind arrays are expanded
+     * using current city / countdown IDs when present.
+     */
+    val homeExtraWidgetsFlow: Flow<List<HomeExtraWidgetEntry>> =
+            context.fokusLauncherPreferencesDataStore.data.map { prefs ->
+                val cities = parseWorldClockCities(prefs[WORLD_CLOCK_CITIES_KEY] ?: "")
+                val events = parseCountdownEvents(prefs[COUNTDOWN_EVENT_KEY] ?: "")
+                parseHomeExtraWidgets(
+                        raw = prefs[HOME_EXTRA_WIDGETS_KEY] ?: "",
+                        legacyWorldClockCityIds = cities.map { it.id },
+                        legacyCountdownEventIds = events.map { it.id },
+                )
+            }
+
+    suspend fun setHomeExtraWidgets(entries: List<HomeExtraWidgetEntry>) {
+        context.fokusLauncherPreferencesDataStore.edit { prefs ->
+            val serialized = serializeHomeExtraWidgets(entries)
+            if (serialized.isEmpty()) prefs.remove(HOME_EXTRA_WIDGETS_KEY)
+            else prefs[HOME_EXTRA_WIDGETS_KEY] = serialized
+        }
+    }
+
+    suspend fun addHomeExtraWorldClock(city: WorldClockCity) {
+        context.fokusLauncherPreferencesDataStore.edit { prefs ->
+            val cities = parseWorldClockCities(prefs[WORLD_CLOCK_CITIES_KEY] ?: "")
+            val events = parseCountdownEvents(prefs[COUNTDOWN_EVENT_KEY] ?: "")
+            val nextCities = clampWorldClockCities(cities + city)
+            prefs[WORLD_CLOCK_CITIES_KEY] = serializeWorldClockCities(nextCities)
+            val current =
+                    parseHomeExtraWidgets(
+                            prefs[HOME_EXTRA_WIDGETS_KEY] ?: "",
+                            legacyWorldClockCityIds = cities.map { it.id },
+                            legacyCountdownEventIds = events.map { it.id },
+                    )
+            val entry = HomeExtraWidgetEntry.WorldClock(city.id)
+            if (current.any { it.stableKey == entry.stableKey }) return@edit
+            prefs[HOME_EXTRA_WIDGETS_KEY] = serializeHomeExtraWidgets(current + entry)
+        }
+    }
+
+    suspend fun addHomeExtraCountdown(event: CountdownEvent) {
+        context.fokusLauncherPreferencesDataStore.edit { prefs ->
+            val cities = parseWorldClockCities(prefs[WORLD_CLOCK_CITIES_KEY] ?: "")
+            val events = parseCountdownEvents(prefs[COUNTDOWN_EVENT_KEY] ?: "")
+            val nextEvents = normalizeCountdownEvents(events + event)
+            prefs[COUNTDOWN_EVENT_KEY] = serializeCountdownEvents(nextEvents)
+            val current =
+                    parseHomeExtraWidgets(
+                            prefs[HOME_EXTRA_WIDGETS_KEY] ?: "",
+                            legacyWorldClockCityIds = cities.map { it.id },
+                            legacyCountdownEventIds = events.map { it.id },
+                    )
+            val entry = HomeExtraWidgetEntry.Countdown(event.id)
+            if (current.any { it.stableKey == entry.stableKey }) return@edit
+            prefs[HOME_EXTRA_WIDGETS_KEY] = serializeHomeExtraWidgets(current + entry)
+        }
+    }
+
+    suspend fun removeHomeExtraWidget(entry: HomeExtraWidgetEntry) {
+        context.fokusLauncherPreferencesDataStore.edit { prefs ->
+            val cities = parseWorldClockCities(prefs[WORLD_CLOCK_CITIES_KEY] ?: "")
+            val events = parseCountdownEvents(prefs[COUNTDOWN_EVENT_KEY] ?: "")
+            val current =
+                    parseHomeExtraWidgets(
+                            prefs[HOME_EXTRA_WIDGETS_KEY] ?: "",
+                            legacyWorldClockCityIds = cities.map { it.id },
+                            legacyCountdownEventIds = events.map { it.id },
+                    )
+            val next = current.filterNot { it.stableKey == entry.stableKey }
+            if (next.isEmpty()) prefs.remove(HOME_EXTRA_WIDGETS_KEY)
+            else prefs[HOME_EXTRA_WIDGETS_KEY] = serializeHomeExtraWidgets(next)
+            when (entry) {
+                is HomeExtraWidgetEntry.WorldClock -> {
+                    val remainingCities = cities.filterNot { it.id == entry.cityId }
+                    if (remainingCities.isEmpty()) prefs.remove(WORLD_CLOCK_CITIES_KEY)
+                    else prefs[WORLD_CLOCK_CITIES_KEY] =
+                            serializeWorldClockCities(clampWorldClockCities(remainingCities))
+                }
+                is HomeExtraWidgetEntry.Countdown -> {
+                    val remainingEvents = events.filterNot { it.id == entry.eventId }
+                    if (remainingEvents.isEmpty()) prefs.remove(COUNTDOWN_EVENT_KEY)
+                    else prefs[COUNTDOWN_EVENT_KEY] = serializeCountdownEvents(remainingEvents)
+                }
+            }
+        }
+    }
+
+    suspend fun reorderHomeExtraWidget(from: Int, to: Int) {
+        context.fokusLauncherPreferencesDataStore.edit { prefs ->
+            val cities = parseWorldClockCities(prefs[WORLD_CLOCK_CITIES_KEY] ?: "")
+            val events = parseCountdownEvents(prefs[COUNTDOWN_EVENT_KEY] ?: "")
+            val current =
+                    parseHomeExtraWidgets(
+                            prefs[HOME_EXTRA_WIDGETS_KEY] ?: "",
+                            legacyWorldClockCityIds = cities.map { it.id },
+                            legacyCountdownEventIds = events.map { it.id },
+                    )
+            val moved = moveHomeExtraWidget(current, from, to)
+            if (moved.isEmpty()) prefs.remove(HOME_EXTRA_WIDGETS_KEY)
+            else prefs[HOME_EXTRA_WIDGETS_KEY] = serializeHomeExtraWidgets(moved)
+        }
+    }
+
+    val showHomeWorldClockFlow: Flow<Boolean> =
+            homeExtraWidgetsFlow.map { homeExtraWorldClockCount(it) > 0 }
+
+    val showHomeCountdownFlow: Flow<Boolean> =
+            homeExtraWidgetsFlow.map { homeExtraHasCountdown(it) }
 
     val showNotificationIndicatorsFlow: Flow<Boolean> =
             prefFlow(SHOW_NOTIFICATION_INDICATORS_KEY, false)

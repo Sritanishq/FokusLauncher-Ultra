@@ -77,7 +77,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.runtime.rememberUpdatedState
+import com.lu4p.fokuslauncher.data.model.HomeExtraWidgetAddType
+import com.lu4p.fokuslauncher.data.model.HomeExtraWidgetEntry
+import com.lu4p.fokuslauncher.data.model.displayNameForTimeZoneId
+import com.lu4p.fokuslauncher.data.model.formatUtcOffsetLabel
+import com.lu4p.fokuslauncher.ui.home.formatCountdownDateTimeLabel
+import com.lu4p.fokuslauncher.ui.util.rememberLocallyReorderedList
+import com.lu4p.fokuslauncher.ui.util.rememberVerticalSlotReorderState
+import com.lu4p.fokuslauncher.ui.settings.components.EditorDragHandleReorderIcon
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -126,6 +136,7 @@ import com.lu4p.fokuslauncher.ui.settings.components.SettingsToggleRow
 import com.lu4p.fokuslauncher.ui.theme.composeFontFamilyFromStoredName
 import com.lu4p.fokuslauncher.ui.theme.launcherIconDp
 import com.lu4p.fokuslauncher.ui.util.OnResumeEffect
+import com.lu4p.fokuslauncher.ui.util.clickableWithSystemSound
 import com.lu4p.fokuslauncher.ui.util.formatShortcutTargetDisplay
 import android.app.Activity
 import androidx.annotation.StringRes
@@ -890,7 +901,19 @@ fun HomeWidgetsSettingsScreen(
     var pendingNotificationIndicatorsEnable by remember { mutableStateOf(false) }
     var usageAccessTick by remember { mutableIntStateOf(0) }
     var pendingScreenTimeEnable by remember { mutableStateOf(false) }
+    var showAddOtherWidget by remember { mutableStateOf(false) }
+    var editingCityId by remember { mutableStateOf<String?>(null) }
+    var pendingEditNewestCity by remember { mutableStateOf(false) }
+    var editingCountdownId by remember { mutableStateOf<String?>(null) }
+    var pendingEditNewestCountdown by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
+    val extraWidgetsSource = uiState.homeExtraWidgets
+    val citiesById = remember(uiState.worldClockCities) { uiState.worldClockCities.associateBy { it.id } }
+    val eventsById = remember(uiState.countdownEvents) { uiState.countdownEvents.associateBy { it.id } }
+    val localExtras = rememberLocallyReorderedList(extraWidgetsSource)
+    val extraWidgets = localExtras.items
+    val reorderState = rememberVerticalSlotReorderState()
+    val onExtraCommit by rememberUpdatedState(viewModel::setHomeExtraWidgets)
     OnResumeEffect(lifecycleOwner) {
         mediaNotificationAccessTick++
         usageAccessTick++
@@ -967,7 +990,7 @@ fun HomeWidgetsSettingsScreen(
             item {
                 TemperatureUnitDropdown(
                         currentUnit = uiState.temperatureUnit,
-                        enabled = uiState.showHomeWeather,
+                        enabled = uiState.showHomeWeather || uiState.showWorldClockWeather,
                         onUnitSelected = viewModel::setTemperatureUnit,
                 )
             }
@@ -981,6 +1004,15 @@ fun HomeWidgetsSettingsScreen(
                         label = stringResource(labelRes),
                         checked = checked,
                         onCheckedChange = onChange,
+                )
+            }
+            item {
+                SettingsToggleRow(
+                        label = stringResource(R.string.settings_show_world_clock_weather),
+                        subtitle =
+                                stringResource(R.string.settings_show_world_clock_weather_subtitle),
+                        checked = uiState.showWorldClockWeather,
+                        onCheckedChange = viewModel::setShowWorldClockWeather,
                 )
             }
             item {
@@ -1045,6 +1077,105 @@ fun HomeWidgetsSettingsScreen(
                                 viewModel.setShowHomeMedia(false)
                             }
                         },
+                )
+            }
+            item { SettingsDivider() }
+            item {
+                SettingsRow(
+                        label = stringResource(R.string.settings_home_extra_widgets),
+                        subtitle =
+                                if (extraWidgets.isEmpty()) {
+                                    stringResource(R.string.settings_home_extra_widgets_empty)
+                                } else {
+                                    null
+                                },
+                )
+            }
+            items(
+                    count = extraWidgets.size,
+                    key = { extraWidgets[it].stableKey },
+            ) { index ->
+                val entry = extraWidgets[index]
+                val title: String
+                val subtitle: String
+                when (entry) {
+                    is HomeExtraWidgetEntry.WorldClock -> {
+                        val city = citiesById[entry.cityId]
+                        title = city?.label ?: stringResource(R.string.settings_world_clock_cities)
+                        subtitle =
+                                if (city == null) {
+                                    stringResource(R.string.settings_world_clock_cities_empty)
+                                } else {
+                                    val zone = displayNameForTimeZoneId(city.timeZoneId)
+                                    val offset = formatUtcOffsetLabel(city.timeZoneId)
+                                    "$zone · $offset"
+                                }
+                    }
+                    is HomeExtraWidgetEntry.Countdown -> {
+                        val event = eventsById[entry.eventId]
+                        title = event?.title ?: stringResource(R.string.settings_countdown_event)
+                        subtitle =
+                                if (event == null) {
+                                    stringResource(R.string.settings_countdown_event_empty)
+                                } else {
+                                    formatCountdownDateTimeLabel(context, event)
+                                }
+                    }
+                }
+                Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier =
+                                Modifier.fillMaxWidth()
+                                        .heightIn(min = 56.dp)
+                                        .graphicsLayer {
+                                            translationY = reorderState.translationYForIndex(index)
+                                        }
+                                        .clickableWithSystemSound {
+                                            when (entry) {
+                                                is HomeExtraWidgetEntry.WorldClock ->
+                                                        editingCityId = entry.cityId
+                                                is HomeExtraWidgetEntry.Countdown ->
+                                                        editingCountdownId = entry.eventId
+                                            }
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                ) {
+                    EditorDragHandleReorderIcon(
+                            reorderState = reorderState,
+                            index = index,
+                            lastIndex = extraWidgets.lastIndex,
+                            onReorder = localExtras::reorder,
+                            onReset = {
+                                reorderState.reset {
+                                    localExtras.onDragEnd(onExtraCommit)
+                                }
+                            },
+                            entry.stableKey,
+                            extraWidgets.size,
+                            onDragGestureStart = localExtras::onDragStart,
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                                text = title,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onBackground,
+                        )
+                        Text(
+                                text = subtitle,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.secondary,
+                        )
+                    }
+                    FokusTextButton(onClick = { viewModel.removeHomeExtraWidget(entry) }) {
+                        Text(stringResource(R.string.settings_remove_other_widget))
+                    }
+                }
+            }
+            item {
+                SettingsRow(
+                        label = stringResource(R.string.settings_add_other_widget),
+                        onClick = { showAddOtherWidget = true },
                 )
             }
             item { SettingsDivider() }
@@ -1154,6 +1285,102 @@ fun HomeWidgetsSettingsScreen(
                 onDismiss = { showAppPickerFor.value = null },
                 profileDisplayNameOverrides = uiState.profileDisplayNameOverrides,
         )
+    }
+
+    if (showAddOtherWidget) {
+        FokusAlertDialog(
+                onDismissRequest = { showAddOtherWidget = false },
+                title = { Text(stringResource(R.string.settings_add_other_widget_title)) },
+                text = {
+                    Column {
+                        HomeExtraWidgetAddType.entries.forEach { type ->
+                            SettingsRow(
+                                    label = stringResource(type.labelRes),
+                                    subtitle =
+                                            stringResource(
+                                                    when (type) {
+                                                        HomeExtraWidgetAddType.WORLD_CLOCK ->
+                                                                R.string.settings_show_home_world_clock_subtitle
+                                                        HomeExtraWidgetAddType.COUNTDOWN ->
+                                                                R.string.settings_show_home_countdown_subtitle
+                                                    }
+                                            ),
+                                    horizontalPadding = 0.dp,
+                                    onClick = {
+                                        viewModel.addHomeExtraWidget(type)
+                                        showAddOtherWidget = false
+                                        when (type) {
+                                            HomeExtraWidgetAddType.WORLD_CLOCK ->
+                                                    pendingEditNewestCity = true
+                                            HomeExtraWidgetAddType.COUNTDOWN ->
+                                                    pendingEditNewestCountdown = true
+                                        }
+                                    },
+                            )
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    FokusTextButton(onClick = { showAddOtherWidget = false }) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
+                },
+        )
+    }
+
+    // After adding a world clock, open the newest city for editing.
+    LaunchedEffect(uiState.worldClockCities, pendingEditNewestCity) {
+        if (pendingEditNewestCity) {
+            val newest = uiState.worldClockCities.maxByOrNull { it.position }
+            if (newest != null) {
+                editingCityId = newest.id
+                pendingEditNewestCity = false
+            }
+        }
+    }
+
+    LaunchedEffect(uiState.countdownEvents, pendingEditNewestCountdown) {
+        if (pendingEditNewestCountdown) {
+            val newest = uiState.countdownEvents.lastOrNull()
+            if (newest != null) {
+                editingCountdownId = newest.id
+                pendingEditNewestCountdown = false
+            }
+        }
+    }
+
+    editingCityId?.let { cityId ->
+        val city = citiesById[cityId]
+        if (city != null) {
+            WorldClockCityEditDialog(
+                    title = stringResource(R.string.settings_world_clock_edit_city),
+                    initialLabel = city.label,
+                    initialTimeZoneId = city.timeZoneId,
+                    onDismiss = { editingCityId = null },
+                    onSave = { label, zone ->
+                        if (viewModel.updateWorldClockCity(city.id, label, zone)) {
+                            editingCityId = null
+                        }
+                    },
+            )
+        }
+    }
+
+    editingCountdownId?.let { eventId ->
+        val event = eventsById[eventId]
+        if (event != null) {
+            CountdownEditDialog(
+                    initialTitle = event.title,
+                    initialEpochMillis = event.targetEpochMillis,
+                    onDismiss = { editingCountdownId = null },
+                    onSave = { title, epochMillis ->
+                        if (viewModel.saveCountdownEvent(event.id, title, epochMillis)) {
+                            editingCountdownId = null
+                        }
+                    },
+            )
+        }
     }
 }
 
