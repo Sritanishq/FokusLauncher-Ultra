@@ -113,6 +113,7 @@ fun ClockWidget(
 ) {
     val clockStyle = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.SemiBold)
     val color = MaterialTheme.colorScheme.onBackground
+    val supportsDotMatrix = time.isNotEmpty() && time.all { it in '0'..'9' || it == ':' }
     val split =
             remember(time, is24HourFormat) {
                 resolveClockMainAndPeriod(time, is24HourFormat)
@@ -124,7 +125,15 @@ fun ClockWidget(
                 clickModifier.semantics {
                     contentDescription = time.replace("\n", " ").trim()
                 }
-        if (outlined) {
+        if (supportsDotMatrix) {
+            DotMatrixText(
+                    text = time,
+                    style = clockStyle,
+                    color = color,
+                    modifier = textModifier,
+                    outlined = outlined,
+            )
+        } else if (outlined) {
             OutlinedText(
                     text = time,
                     style = clockStyle,
@@ -151,7 +160,14 @@ fun ClockWidget(
                             contentDescription = "$main $period".trim()
                         }
         ) {
-            if (outlined) {
+            if (main.all { it in '0'..'9' || it == ':' }) {
+                DotMatrixText(
+                        text = main,
+                        style = clockStyle,
+                        color = color,
+                        outlined = outlined,
+                )
+            } else if (outlined) {
                 OutlinedText(
                         text = main,
                         style = clockStyle,

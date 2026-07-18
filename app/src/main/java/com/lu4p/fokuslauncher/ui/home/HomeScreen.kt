@@ -69,6 +69,7 @@ import com.lu4p.fokuslauncher.ui.components.ClockWidget
 import com.lu4p.fokuslauncher.ui.components.DateBatteryRow
 import com.lu4p.fokuslauncher.ui.components.FokusBottomSheet
 import com.lu4p.fokuslauncher.ui.components.MediaWidget
+import com.lu4p.fokuslauncher.ui.components.MonthlyCalendar
 import com.lu4p.fokuslauncher.ui.components.ScreenTimeWidget
 import com.lu4p.fokuslauncher.ui.components.FokusOutlinedButton
 import com.lu4p.fokuslauncher.ui.components.LauncherIcon
@@ -527,9 +528,19 @@ private fun HomeWidgetsSection(
             } else {
                 0.dp
             }
-    // A bit of air under the date line so extras don't sit flush against it.
-    val extrasTopPad = if (showDateOrBattery) 8.dp else belowHeaderTopPad
-    var nextTopPad = belowHeaderTopPad
+
+    MonthlyCalendar(
+            outlined = outlined,
+            onClick = onDateClick,
+            modifier =
+                    Modifier.fillMaxWidth()
+                            .padding(top = if (showDateOrBattery) 8.dp else belowHeaderTopPad)
+                            .testTag("home_monthly_calendar"),
+    )
+
+    // A bit of air under the calendar so extras don't sit flush against it.
+    val extrasTopPad = 8.dp
+    var nextTopPad = 8.dp
 
     val extraChips =
             remember(homeExtraWidgets, worldClockUiState, countdownUiState) {
