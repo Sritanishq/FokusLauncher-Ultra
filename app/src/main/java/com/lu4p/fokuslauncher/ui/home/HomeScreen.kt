@@ -67,6 +67,7 @@ import com.lu4p.fokuslauncher.data.model.drawerOpenCountKey
 import com.lu4p.fokuslauncher.ui.components.HomeExtraChipsRow
 import com.lu4p.fokuslauncher.ui.components.ClockWidget
 import com.lu4p.fokuslauncher.ui.components.DateBatteryRow
+import com.lu4p.fokuslauncher.ui.components.DailyProgressWidget
 import com.lu4p.fokuslauncher.ui.components.FokusBottomSheet
 import com.lu4p.fokuslauncher.ui.components.MediaWidget
 import com.lu4p.fokuslauncher.ui.components.MonthlyCalendar
@@ -529,12 +530,20 @@ private fun HomeWidgetsSection(
                 0.dp
             }
 
+    DailyProgressWidget(
+            outlined = outlined,
+            modifier =
+                    Modifier.fillMaxWidth()
+                            .padding(top = if (showDateOrBattery) 8.dp else belowHeaderTopPad)
+                            .testTag("daily_progress_widget"),
+    )
+
     MonthlyCalendar(
             outlined = outlined,
             onClick = onDateClick,
             modifier =
                     Modifier.fillMaxWidth()
-                            .padding(top = if (showDateOrBattery) 8.dp else belowHeaderTopPad)
+                            .padding(top = 8.dp)
                             .testTag("home_monthly_calendar"),
     )
 
